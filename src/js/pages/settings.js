@@ -156,6 +156,7 @@ function mount(root, initialPanel, close) {
             ${toggle('closeOnLaunch', 'Close launcher when game starts', 'Quit Orbit Launcher as soon as Minecraft opens.')}
             ${toggle('keepLauncherOpen', 'Keep launcher open', 'Keep Orbit Launcher available while Minecraft is running. When off, it minimizes instead.')}
             ${toggle('orbitInEveryInstance', 'Orbit Client in every instance', 'Add Orbit Client and Fabric API to Fabric instances on supported Minecraft versions when they launch. Delete or disable it in an instance to keep it out of that one.')}
+            ${toggle('performanceLaunch', 'Performance launch', 'Start Minecraft at above-normal priority and with the NVIDIA driver\'s Minecraft profile, and on NVIDIA cards turn off the Sodium workaround that disables the driver\'s threading. Turn off if the game crashes or stutters on start.')}
             ${toggle('discordRichPresence', 'Discord Rich Presence', 'Show the instance you’re playing on your Discord profile while Discord is open.')}
             <div class="settings-row">
               <span class="grow"><b>Concurrent downloads</b><small>How many files to fetch in parallel.</small></span>

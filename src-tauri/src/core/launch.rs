@@ -177,6 +177,9 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
 
     // ---- 4. build the command -------------------------------------------
     let mut jvm_args = settings.default_jvm_args.clone();
+    if settings.performance_launch {
+        jvm_args.push(NVIDIA_PROFILE_ARG.into());
+    }
     jvm_args.extend(instance.settings.jvm_args.clone());
 
     let ctx = LaunchContext {
@@ -216,6 +219,10 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
 
     // ---- 5. spawn --------------------------------------------------------
     sink(Progress::new("launch", "Starting Minecraft…"));
+    if let Err(e) = set_sodium_nvidia_workaround_off(&game_dir, settings.performance_launch) {
+        // Only a frame-rate setting: launch anyway.
+        log::warn!("Couldn't update Sodium's NVIDIA workaround setting: {e}");
+    }
 
     let logs_dir = paths.instance_dir(&instance.id).join("logs");
     std::fs::create_dir_all(&logs_dir)?;
@@ -237,6 +244,9 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
     }
 
     super::no_console(&mut command);
+    if settings.performance_launch {
+        above_normal_priority(&mut command);
+    }
     own_process_group(&mut command);
 
     // Keep the whole transcript on disk for the crash viewer, while relaying
@@ -367,6 +377,74 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
 
 /// On unix, start the game as the leader of its own process group, so [`kill_tree`]
 /// can close it together with whatever it started. Windows uses `taskkill /T` instead.
+// ---- Performance launch ----------------------------------------------------
+
+/// The NVIDIA driver applies its Minecraft profile only when the Java command line contains
+/// Minecraft's main class, which Fabric, Forge and Quilt replace with their own. This property
+/// does nothing in Java; it only puts the name back on the command line (Lunar does the same).
+const NVIDIA_PROFILE_ARG: &str = "-DTrickNvidiaDriversForPerformance=net.minecraft.client.main.Main";
+
+/// Marks the line Orbit Launcher wrote, so turning Performance launch off removes only that.
+const SODIUM_WORKAROUND_MARK: &str = "# Orbit Launcher (Performance launch): keep the NVIDIA driver's threading on";
+const SODIUM_WORKAROUND_OFF: &str = "mixin.workarounds.context_creation=false";
+
+/// Sodium turns the NVIDIA driver's threaded optimization off (`__GL_THREADED_OPTIMIZATIONS=0` and
+/// synchronous debug output) on drivers it considers affected, which costs a large share of the frame
+/// rate when the CPU is the limit. When Performance launch is on and the instance's last game log
+/// shows Sodium applied that workaround, opt out through Sodium's own config; when it's off, take
+/// back only what was added here. A player's own setting for that option is left alone.
+fn set_sodium_nvidia_workaround_off(game_dir: &Path, enabled: bool) -> std::io::Result<()> {
+    let config = game_dir.join("config").join("sodium-mixins.properties");
+    let existing = std::fs::read_to_string(&config).unwrap_or_default();
+    let ours = existing.contains(SODIUM_WORKAROUND_MARK);
+    if !enabled {
+        if ours {
+            let kept: Vec<&str> = existing
+                .lines()
+                .filter(|line| *line != SODIUM_WORKAROUND_MARK && *line != SODIUM_WORKAROUND_OFF)
+                .collect();
+            std::fs::write(&config, kept.join("\n") + "\n")?;
+        }
+        return Ok(());
+    }
+    let already_set = existing
+        .lines()
+        .any(|line| line.trim_start().starts_with("mixin.workarounds.context_creation"));
+    if already_set {
+        return Ok(());
+    }
+    // Sodium only names this workaround when it applies it, so this also keeps AMD and Intel cards
+    // (and NVIDIA drivers Sodium has no concern with) out of it.
+    let log = std::fs::read_to_string(game_dir.join("logs").join("latest.log")).unwrap_or_default();
+    if !log.contains("NVIDIA_THREADED_OPTIMIZATIONS_BROKEN") {
+        return Ok(());
+    }
+    std::fs::create_dir_all(game_dir.join("config"))?;
+    let mut updated = existing;
+    if !updated.is_empty() && !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    updated.push_str(SODIUM_WORKAROUND_MARK);
+    updated.push('\n');
+    updated.push_str(SODIUM_WORKAROUND_OFF);
+    updated.push('\n');
+    std::fs::write(&config, updated)
+}
+
+/// Above-normal priority, like Lunar: Windows favours the game over programs in the background
+/// without starving input, audio or Windows itself the way High priority can.
+fn above_normal_priority(command: &mut tokio::process::Command) {
+    #[cfg(windows)]
+    {
+        // Creation flags replace each other, so this repeats no_console's flag.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        const ABOVE_NORMAL_PRIORITY_CLASS: u32 = 0x0000_8000;
+        command.creation_flags(CREATE_NO_WINDOW | ABOVE_NORMAL_PRIORITY_CLASS);
+    }
+    #[cfg(not(windows))]
+    let _ = command;
+}
+
 pub(crate) fn own_process_group(command: &mut tokio::process::Command) {
     #[cfg(unix)]
     command.process_group(0);
@@ -797,6 +875,61 @@ mod running_tests {
         let pid = child.id().expect("pid");
         child.wait().await.expect("wait");
         assert!(!java_is_running(pid).await);
+    }
+}
+
+#[cfg(test)]
+mod performance_tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("orbit-perf-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("logs")).unwrap();
+        dir
+    }
+
+    fn sodium_config(dir: &Path) -> String {
+        std::fs::read_to_string(dir.join("config").join("sodium-mixins.properties")).unwrap_or_default()
+    }
+
+    #[test]
+    fn sodium_workaround_turned_off_only_where_sodium_applied_it() {
+        let dir = scratch("applied");
+        set_sodium_nvidia_workaround_off(&dir, true).unwrap();
+        assert_eq!(sodium_config(&dir), "", "no log naming the workaround: nothing written");
+
+        std::fs::write(
+            dir.join("logs").join("latest.log"),
+            "[main/WARN]: Sodium has applied one or more workarounds ...: [NVIDIA_THREADED_OPTIMIZATIONS_BROKEN]\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.join("config")).unwrap();
+        std::fs::write(dir.join("config").join("sodium-mixins.properties"), "# Sodium's notice\nmixin.features.foo=true").unwrap();
+        set_sodium_nvidia_workaround_off(&dir, true).unwrap();
+        set_sodium_nvidia_workaround_off(&dir, true).unwrap();
+        let written = sodium_config(&dir);
+        assert!(written.starts_with("# Sodium's notice\nmixin.features.foo=true\n"));
+        assert_eq!(written.matches(SODIUM_WORKAROUND_OFF).count(), 1, "added once");
+
+        // Turning Performance launch off takes back only what it added.
+        set_sodium_nvidia_workaround_off(&dir, false).unwrap();
+        assert_eq!(sodium_config(&dir), "# Sodium's notice\nmixin.features.foo=true\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_players_own_sodium_setting_is_left_alone() {
+        let dir = scratch("own");
+        std::fs::write(dir.join("logs").join("latest.log"), "[NVIDIA_THREADED_OPTIMIZATIONS_BROKEN]").unwrap();
+        std::fs::create_dir_all(dir.join("config")).unwrap();
+        let own = "mixin.workarounds.context_creation=true\n";
+        std::fs::write(dir.join("config").join("sodium-mixins.properties"), own).unwrap();
+        set_sodium_nvidia_workaround_off(&dir, true).unwrap();
+        assert_eq!(sodium_config(&dir), own);
+        set_sodium_nvidia_workaround_off(&dir, false).unwrap();
+        assert_eq!(sodium_config(&dir), own);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
