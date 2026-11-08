@@ -3,12 +3,16 @@
 # so this is safe for test builds. (Signed releases with in-app updates go through
 # release.yml, triggered by a version tag.)
 #
-# Run it from the Actions tab ("Build installers" > Run workflow), or:
+# Run it from the Actions tab ("Build installers" > Run workflow), or
 #   gh workflow run build-installers.yml
+# (manual runs need this file on the default branch), or push any branch named
+# installers/<something>, which builds that branch.
 name: Build installers
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["installers/**"]
 
 permissions:
   contents: read
