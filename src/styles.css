@@ -53,8 +53,8 @@
   --radius: 16px;
   --radius-sm: 12px;
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
-  --mono: 'Cascadia Mono', Consolas, 'SFMono-Regular', Menlo, monospace;
-  --sans: Inter, 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --mono: monospace;
+  --sans: 'Segoe UI Variable', system-ui, sans-serif;
 
   color-scheme: dark;
   font-family: var(--sans);
@@ -113,7 +113,9 @@ html,
 body {
   margin: 0;
   height: 100%;
-  overflow: hidden;
+  /* clip, not hidden: hidden overflow can still be scrolled, so focusing a control
+     past the edge slid the whole app sideways (logo off the left, controls cut). */
+  overflow: clip;
 }
 
 body {

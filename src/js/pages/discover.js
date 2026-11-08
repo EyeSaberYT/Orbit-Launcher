@@ -167,13 +167,18 @@ export function render(root, params, query) {
         </div>
       </section>
       <div class="dc-layout">
-        <aside class="panel dc-filters" data-filters></aside>
+        <details class="panel dc-filter-disclosure" open><summary>${icon('chevron-down')} Filters</summary><aside class="dc-filters" data-filters></aside></details>
         <section class="dc-results" data-results></section>
       </div>`,
   );
 
   const bannerEl = root.querySelector('[data-banner]');
   const filtersEl = root.querySelector('[data-filters]');
+  const filterDisclosure = root.querySelector('.dc-filter-disclosure');
+  const compactFilters = window.matchMedia('(max-width: 760px)');
+  const setFilterDisclosure = () => { filterDisclosure.open = !compactFilters.matches; };
+  setFilterDisclosure();
+  compactFilters.addEventListener('change', setFilterDisclosure);
   const resultsEl = root.querySelector('[data-results]');
   const sortEl = root.querySelector('[data-sort]');
   const searchEl = root.querySelector('[data-search]');
@@ -464,7 +469,7 @@ export function render(root, params, query) {
       drawControls();
       return refilter();
     }
-    const typeBtn = target.closest('[data-type]');
+    const typeBtn = target.closest('button[data-type]');
     if (typeBtn) {
       if (typeBtn.dataset.type === safeType) return;
       prefs.set('discover.type', typeBtn.dataset.type);
@@ -542,6 +547,7 @@ export function render(root, params, query) {
 
   return () => {
     disposed = true;
+    compactFilters.removeEventListener('change', setFilterDisclosure);
     off();
   };
 }

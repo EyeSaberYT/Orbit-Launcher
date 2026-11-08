@@ -1,0 +1,71 @@
+/* Orbit feedback: one timing pair, transform/opacity for movement, no scroll hijack. */
+:root {
+  --motion-duration: 180ms;
+  --motion-ease: cubic-bezier(.2,.8,.2,1);
+  --motion-cycle: 1200ms;
+  --star-shimmer-duration: 3200ms;
+  --star-shimmer-dim: rgba(255,255,255,.55);
+}
+.nav-tabs { position: relative; isolation: isolate; }
+.nav-glider { position: absolute; left: 0; z-index: -1; border-radius: inherit; background: var(--chrome-selected); border: 1px solid var(--line-strong); box-shadow: inset 0 1px 0 var(--line); pointer-events: none; }
+.nav-glider.is-ready { transition: transform var(--motion-duration) var(--motion-ease), width var(--motion-duration) var(--motion-ease), height var(--motion-duration) var(--motion-ease); }
+.nav-tabs:has(.nav-glider) .nav-tab.active { background: none; border-color: transparent; box-shadow: none; }
+.nav-tab, .btn, .account-btn, .home-round-btn, .home-play-btn, .home-instance-row,
+.menu-item, .home-text-btn, .home-news-story, .settings-nav-item, .inst-tab,
+.segmented button, .home-explore .icon, .toast, .progress-fill, .input,
+.inst-card, .dc-card, .inst-row, .tab {
+  transition-duration: var(--motion-duration);
+  transition-timing-function: var(--motion-ease);
+}
+.btn { transition-property: background-color, border-color, color, box-shadow, transform; }
+.home-instance-row { transition-property: background-color, border-color, color; }
+.modal, .modal-backdrop, .menu { animation: none; }
+.progress-fill { transition-property: width; }
+.spinner { animation-duration: var(--motion-cycle); animation-timing-function: linear; }
+.home-news-head [aria-disabled='true'] .icon { animation: spin var(--motion-cycle) linear infinite; }
+
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled):not([aria-disabled='true']) { transform: translateY(-1px); }
+}
+.btn:active:not(:disabled):not([aria-disabled='true']) { transform: translateY(1px) scale(.98); }
+
+/* The loader is part of real bootstrap work, not a timed introduction. */
+.boot-loading { flex: 1; min-height: 320px; display: grid; place-items: center; padding: 32px 20px; }
+.boot-card { width: min(360px,100%); display: flex; flex-direction: column; align-items: center; padding: 36px 28px 28px; border-radius: 28px; background: var(--chrome-glass); color: var(--text); text-align: center; }
+.boot-visual { position: relative; display: grid; place-items: center; width: 140px; height: 140px; margin-bottom: 24px; }
+.boot-orbit { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; }
+.boot-track { stroke: var(--line-strong); stroke-width: 1; }
+.boot-comet { stroke: var(--primary); stroke-width: 2.5; stroke-linecap: round; transform-origin: 70px 70px; animation: spin var(--motion-cycle) linear infinite; }
+.boot-comet.is-inner { stroke-width: 1.5; opacity: .55; animation-direction: reverse; animation-duration: calc(var(--motion-cycle) * 1.5); }
+.boot-logo { width: 56px; height: 56px; object-fit: contain; animation: none; filter: none; }
+.boot-title { color: var(--heading); font-size: 22px; font-weight: 600; letter-spacing: -.035em; }
+.boot-stage { margin-top: 10px; font-size: 14px; line-height: 1.5; }
+.boot-hint { margin-top: 20px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+
+/* A white sheen crosses only the existing star artwork. The shape and wordmark
+   stay still; the transparent image remains the fallback without mask support. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (mask-image: linear-gradient(transparent, transparent)) or (-webkit-mask-image: linear-gradient(transparent, transparent)) {
+    .orbit-mark {
+      -webkit-mask-image: linear-gradient(110deg, var(--star-shimmer-dim) 35%, var(--logo-light) 45%, var(--logo-light) 55%, var(--star-shimmer-dim) 65%);
+      mask-image: linear-gradient(110deg, var(--star-shimmer-dim) 35%, var(--logo-light) 45%, var(--logo-light) 55%, var(--star-shimmer-dim) 65%);
+      -webkit-mask-size: 300% 100%;
+      mask-size: 300% 100%;
+      -webkit-mask-repeat: no-repeat;
+      mask-repeat: no-repeat;
+      animation: orbit-star-shimmer var(--star-shimmer-duration) var(--motion-ease) infinite;
+    }
+  }
+}
+@keyframes orbit-star-shimmer {
+  /* 480ms rest + 1100ms sweep + 1620ms rest = 3200ms. Both endpoints
+     show the same minimum alpha, so the repeat introduces no brightness jump. */
+  0%, 15% { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+  49.375%, 100% { -webkit-mask-position: 0% 0; mask-position: 0% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-duration: 0ms; }
+  *, *::before, *::after { animation: none !important; transition-duration: 0ms !important; scroll-behavior: auto !important; }
+  .btn, .account-btn, .home-play-btn, .home-round-btn, .home-explore .icon { transform: none !important; }
+}

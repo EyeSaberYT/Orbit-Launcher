@@ -57,6 +57,8 @@ pub fn runtime_platform() -> Option<&'static str> {
     if cfg!(target_os = "windows") {
         if cfg!(target_arch = "x86_64") {
             Some("windows-x64")
+        } else if cfg!(target_arch = "aarch64") {
+            Some("windows-arm64")
         } else {
             Some("windows-x86")
         }
@@ -84,6 +86,20 @@ pub fn component_for_major(required: u32) -> &'static str {
         // version.json passes `--sun-misc-unsafe-memory-access`, which only
         // JDK 24+ accepts — anything older dies before the game starts.
         _ => "java-runtime-epsilon",
+    }
+}
+
+/// Whether a Java `major` can run a game that asks for `required`.
+///
+/// Versions that ask for Java 8 (everything up to 1.16, and the LaunchWrapper-based
+/// Forge builds) break on newer Javas: LaunchWrapper casts the system class loader
+/// to `URLClassLoader`, which stopped being true in Java 9. They need exactly 8.
+/// Newer versions run on their own major or anything after it.
+pub fn suits(major: u32, required: u32) -> bool {
+    match required {
+        0 => true,
+        1..=8 => major == 8,
+        _ => major >= required,
     }
 }
 
@@ -317,8 +333,8 @@ pub async fn detect(
         return Some(chosen.clone());
     }
 
-    // Otherwise the lowest version that satisfies.
-    let mut matching: Vec<JavaRuntime> = found.iter().filter(|r| r.major >= required).cloned().collect();
+    // Otherwise the lowest version that can run it (exactly 8 for the legacy versions).
+    let mut matching: Vec<JavaRuntime> = found.iter().filter(|r| suits(r.major, required)).cloned().collect();
     matching.sort_by_key(|r| r.major);
     if let Some(best) = matching.into_iter().next() {
         return Some(best);
@@ -562,4 +578,20 @@ pub async fn install(
     probe(&bin, "managed")
         .await
         .ok_or_else(|| LauncherError::msg("The downloaded Java runtime didn't respond."))
+}
+
+#[cfg(test)]
+mod suits_tests {
+    use super::suits;
+
+    #[test]
+    fn legacy_versions_need_exactly_java_8() {
+        assert!(suits(8, 8));
+        assert!(!suits(17, 8));
+        assert!(!suits(21, 8));
+        assert!(suits(21, 17));
+        assert!(suits(17, 17));
+        assert!(!suits(16, 17));
+        assert!(suits(11, 0));
+    }
 }
