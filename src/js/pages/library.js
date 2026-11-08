@@ -3,6 +3,8 @@ import { instanceCard, instanceRow, wireInstanceList } from '../components/insta
 import { openNewInstanceDialog } from '../dialogs/new-instance.js';
 import { setDropHandler } from '../drop.js';
 import { prefs, store } from '../store.js';
+import { refreshLauncherData } from '../actions.js';
+import { launcherAvailability } from '../load-state.js';
 import { emptyState, html, icon, setHtml, showMenu } from '../ui.js';
 
 const openLauncherImport = async () => (await import('../dialogs/import-launcher.js')).openImportLauncherDialog();
@@ -35,7 +37,7 @@ export function render(root, _params, query) {
         <div class="row-between" style="padding:12px;border-bottom:1px solid var(--line)">
           <label class="input-icon grow" style="max-width:420px">
             ${icon('search', 'icon-sm')}
-            <input class="input" data-filter placeholder="Find an instance by name, version or loader">
+            <input class="input" data-filter aria-label="Find an instance" placeholder="Find an instance by name, version or loader">
           </label>
           <span class="small muted" data-count></span>
         </div>
@@ -48,15 +50,18 @@ export function render(root, _params, query) {
   const countEl = root.querySelector('[data-count]');
 
   const draw = () => {
+    root.querySelectorAll('[data-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === view)));
+    const availability = launcherAvailability(store.state);
+    const known = availability.instances === 'ready';
     const instances = store.state.instances;
     const runningCount = instances.filter((i) => store.state.running.has(i.id)).length;
     const modCount = instances.reduce((sum, i) => sum + i.modCount, 0);
     setHtml(
       metricsEl,
       html`
-        <div class="metric"><span class="metric-icon">${icon('layers')}</span><span><small>My instances</small><strong>${instances.length}</strong></span></div>
-        <div class="metric"><span class="metric-icon">${icon('package')}</span><span><small>Mods installed</small><strong>${modCount}</strong></span></div>
-        <div class="metric ${runningCount ? 'is-live' : ''}"><span class="metric-icon">${icon('gamepad')}</span><span><small>Currently running</small><strong>${runningCount}</strong></span></div>`,
+        <div class="metric"><span class="metric-icon">${icon('layers')}</span><span><small>My instances</small><strong>${known ? instances.length : '—'}</strong></span></div>
+        <div class="metric"><span class="metric-icon">${icon('package')}</span><span><small>Mods installed</small><strong>${known ? modCount : '—'}</strong></span></div>
+        <div class="metric ${known && runningCount ? 'is-live' : ''}"><span class="metric-icon">${icon('gamepad')}</span><span><small>Currently running</small><strong>${known ? runningCount : '—'}</strong></span></div>`,
     );
 
     root.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === view)));
@@ -65,11 +70,17 @@ export function render(root, _params, query) {
     const shown = needle
       ? instances.filter((i) => [i.name, i.gameVersion, i.loader].some((f) => f.toLowerCase().includes(needle)))
       : instances;
-    countEl.textContent = needle
+    countEl.textContent = !known ? (availability.instances === 'unavailable' ? 'Instances unavailable' : 'Loading instances…') : needle
       ? `${shown.length} results`
       : `${instances.length} ${instances.length === 1 ? 'instance' : 'instances'}`;
 
-    if (!store.state.instancesLoaded) {
+    if (availability.instances === 'unavailable') {
+      setHtml(listEl, emptyState({
+        iconName: 'layers', title: 'Instances unavailable',
+        description: 'Reconnect to load your Minecraft setups. Your library has not been changed.',
+        actions: html`<button class="btn btn-outline" data-retry-data ${store.state.refreshingData ? 'disabled' : ''}>${store.state.refreshingData ? 'Reconnecting…' : 'Retry connection'}</button>`,
+      }));
+    } else if (!store.state.instancesLoaded) {
       setHtml(listEl, html`<div class="card-grid">${Array.from({ length: 6 }, () => html`<div class="skeleton" style="height:170px"></div>`)}</div>`);
     } else if (!shown.length) {
       setHtml(
@@ -104,6 +115,8 @@ export function render(root, _params, query) {
       prefs.set('library.view', view);
       return draw();
     }
+    if (target.closest('button:disabled')) return;
+    if (target.closest('[data-retry-data]')) return refreshLauncherData();
     if (target.closest('[data-new]')) return openNewInstanceDialog();
     if (target.closest('[data-import-pack]')) return openModpackImport();
     if (target.closest('[data-import-launcher]')) return openLauncherImport();
@@ -136,7 +149,7 @@ export function render(root, _params, query) {
   if (query.get('import') === 'modpack') openModpackImport();
 
   draw();
-  const off = store.on(['instances', 'running', 'launching', 'instancesLoaded', 'settings'], draw);
+  const off = store.on(['instances', 'running', 'launching', 'instancesLoaded', 'settings', 'loadErrors', 'refreshingData'], draw);
   return () => {
     off();
     offDrop();

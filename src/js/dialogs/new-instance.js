@@ -104,6 +104,7 @@ export function openNewInstanceDialog({ name = '', onCreated } = {}) {
   async function loadVersions() {
     versionSelect.disabled = true;
     createBtn.disabled = true;
+    errorEl.textContent = '';
     try {
       versionList = await api.versions.list(snapshots.checked);
       if (modal.closed) return;
@@ -119,7 +120,9 @@ export function openNewInstanceDialog({ name = '', onCreated } = {}) {
       versionSelect.disabled = false;
       await loadLoaderVersions();
     } catch (error) {
-      errorEl.textContent = `Couldn't load the version list: ${error}`;
+      if (modal.closed) return;
+      setHtml(errorEl, html`<span>Couldn't load the version list: ${String(error)}</span> <button type="button" class="btn btn-outline btn-sm" data-retry-versions>${icon('refresh')} Try again</button>`);
+      errorEl.querySelector('[data-retry-versions]').addEventListener('click', () => loadVersions());
     }
     updateCreate();
   }

@@ -19,6 +19,7 @@ import {
   projectTypeBadge,
   relativeTime,
   setHtml,
+  spinner,
   toastError,
 } from '../ui.js';
 
@@ -52,6 +53,8 @@ export function render(root, params, query) {
 
   let project = null;
   let versions = [];
+  // A failed version request is not "no versions": keep the error to show and retry.
+  let versionsError = null;
   let tab = 'description';
   let galleryIndex = 0;
   let filterGame = 'any';
@@ -145,7 +148,7 @@ export function render(root, params, query) {
             </div>
           </div>
           <div class="dc-hero-actions">
-            <button class="btn btn-primary btn-lg" data-install-latest ${versions.length ? '' : 'disabled'}>${icon(isModpack ? 'package' : 'download')} ${isModpack ? 'Install modpack' : 'Install'}</button>
+            <button class="btn btn-primary btn-lg" data-install-latest ${versions.length || versionsError ? '' : 'disabled'}>${icon(isModpack ? 'package' : 'download')} ${isModpack ? 'Install modpack' : 'Install'}</button>
             <button class="btn btn-outline btn-sm" data-url="${webUrl(project, source)}">${icon('external', 'icon-sm')} View on ${source === 'curseforge' ? 'CurseForge' : 'Modrinth'}</button>
             <div class="row-wrap" style="gap:2px;justify-content:center">${linkButtons()}</div>
           </div>
@@ -168,7 +171,7 @@ export function render(root, params, query) {
           <section class="card dc-main">
             <nav class="tabs">
               <button class="tab ${tab === 'description' ? 'active' : ''}" data-tab="description">Description</button>
-              <button class="tab ${tab === 'versions' ? 'active' : ''}" data-tab="versions">Versions <span class="count">${versions.length}</span></button>
+              <button class="tab ${tab === 'versions' ? 'active' : ''}" data-tab="versions">Versions <span class="count">${versionsError ? '–' : versions.length}</span></button>
             </nav>
             <div class="dc-tab-body" data-description ${tab === 'description' ? '' : 'hidden'}></div>
             <div class="dc-tab-body" data-versions ${tab === 'versions' ? '' : 'hidden'}></div>
@@ -182,7 +185,7 @@ export function render(root, params, query) {
                 ${project.published && html`<dt>Published</dt><dd title="${formatDate(project.published)}">${relativeTime(project.published)}</dd>`}
                 ${project.updated && html`<dt>Updated</dt><dd title="${formatDate(project.updated)}">${relativeTime(project.updated)}</dd>`}
                 <dt>License</dt><dd>${project.license?.name || project.license?.id || 'Not listed'}</dd>
-                <dt>Versions</dt><dd>${versions.length}</dd>
+                <dt>Versions</dt><dd>${versionsError ? 'Unavailable' : versions.length}</dd>
               </dl>
             </section>
             ${Boolean(project.loaders?.length || project.gameVersions?.length) &&
@@ -232,6 +235,10 @@ export function render(root, params, query) {
   function drawVersions() {
     const slot = root.querySelector('[data-versions]');
     if (!slot) return;
+    if (versionsError) {
+      setHtml(slot, errorBlock(versionsError, 'dc-retry-versions'));
+      return;
+    }
     if (!versions.length) {
       setHtml(slot, emptyState({ iconName: 'package', title: 'No versions listed', description: 'This project has no downloadable files yet.' }));
       return;
@@ -324,6 +331,9 @@ export function render(root, params, query) {
       else expanded.add(versionId);
       return drawVersions();
     }
+    if (target.closest('#dc-retry-versions')) {
+      return void reloadVersions();
+    }
     if (target.closest('[data-more-versions]')) {
       shownVersions += VERSIONS_STEP;
       return drawVersions();
@@ -348,16 +358,30 @@ export function render(root, params, query) {
     }
   });
 
+  async function reloadVersions() {
+    const slot = root.querySelector('[data-versions]');
+    if (slot) setHtml(slot, html`<div class="loading-block">${spinner()} Loading versions…</div>`);
+    try {
+      versions = (await api.modrinth.versions(id)) ?? [];
+      versionsError = null;
+    } catch (error) {
+      versionsError = error;
+    }
+    if (disposed) return;
+    drawPage();
+  }
+
   async function load() {
     drawLoading();
     try {
       const [nextProject, nextVersions] = await Promise.all([
         api.modrinth.project(id),
-        api.modrinth.versions(id).catch(() => []),
+        api.modrinth.versions(id).catch((error) => ({ error })),
       ]);
       if (disposed) return;
       project = nextProject;
-      versions = nextVersions ?? [];
+      versionsError = nextVersions && !Array.isArray(nextVersions) ? nextVersions.error : null;
+      versions = Array.isArray(nextVersions) ? nextVersions : [];
       galleryIndex = Math.max(0, (project.gallery ?? []).findIndex((g) => g.featured));
       // Pre-filter the versions list to the target instance.
       const instance = targetInstance();

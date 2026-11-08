@@ -84,12 +84,16 @@ pub async fn resolve(
     let summary = find_version(&manifest, game_version)?;
     let vanilla = manifest::fetch_version_json(http, paths, summary).await?;
 
-    let Some(lv) = loader_version else {
-        return Ok(vanilla);
-    };
     if loader == LoaderKind::Vanilla {
         return Ok(vanilla);
     }
+    // A modded instance without a loader build must not quietly run as vanilla.
+    let Some(lv) = loader_version else {
+        return Err(LauncherError::msg(format!(
+            "No {} build is set for this instance. Install the loader from the instance's settings.",
+            loader.as_str()
+        )));
+    };
 
     loader::validate_version("Minecraft version", game_version)?;
     loader::validate_version("Loader version", lv)?;
@@ -572,7 +576,7 @@ pub fn build_command(ctx: &LaunchContext) -> Result<(String, Vec<String>)> {
     vars.insert("classpath_separator", separator.into());
     vars.insert("auth_uuid", ctx.uuid.replace('-', ""));
     vars.insert("auth_access_token", ctx.access_token.clone());
-    vars.insert("auth_session", format!("token:{}", ctx.access_token));
+    vars.insert("auth_session", format!("token:{}:{}", ctx.access_token, ctx.uuid.replace('-', "")));
     vars.insert("user_type", ctx.user_type.clone());
     vars.insert("version_type", "Orbit Launcher".into());
     vars.insert("natives_directory", ctx.natives_dir.to_string_lossy().to_string());
@@ -584,7 +588,12 @@ pub fn build_command(ctx: &LaunchContext) -> Result<(String, Vec<String>)> {
     vars.insert("user_properties", "{}".into());
     vars.insert("auth_xuid", "0".into());
     vars.insert("clientid", "orbit-launcher".into());
-    // Quick Play placeholders (1.20+).
+    // Quick Play placeholders (1.20+). The game writes a small log of the quick-play
+    // session to `quickPlayPath`; an empty value points it at the game folder itself.
+    vars.insert(
+        "quickPlayPath",
+        ctx.game_dir.join("quickPlay").join("log.json").to_string_lossy().to_string(),
+    );
     match &ctx.quick_play {
         QuickPlay::Multiplayer { address } => {
             vars.insert("quickPlayMultiplayer", address.clone());
@@ -601,8 +610,11 @@ pub fn build_command(ctx: &LaunchContext) -> Result<(String, Vec<String>)> {
     let mut args: Vec<String> = vec![];
 
     // ---- JVM arguments ----------------------------------------------------
-    args.push(format!("-Xms{}M", ctx.memory_min.max(256)));
-    args.push(format!("-Xmx{}M", ctx.memory_max.max(512)));
+    // The JVM refuses to start when the initial heap is larger than the maximum.
+    let xmx = ctx.memory_max.max(512);
+    let xms = ctx.memory_min.max(256).min(xmx);
+    args.push(format!("-Xms{xms}M"));
+    args.push(format!("-Xmx{xmx}M"));
     // Log4Shell: the flag covers log4j 2.10+, Mojang's patched config covers the rest.
     args.push("-Dlog4j2.formatMsgNoLookups=true".into());
     if let Some(logging) = &ctx.logging_arg {
@@ -751,21 +763,24 @@ fn substitute(input: &str, vars: &HashMap<&str, String>) -> String {
     if !input.contains("${") {
         return input.to_string();
     }
+    // Copies text a whole `str` slice at a time, so non-ASCII characters survive.
     let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
-            if let Some(end) = input[i + 2..].find('}') {
-                let key = &input[i + 2..i + 2 + end];
-                out.push_str(vars.get(key).map(|s| s.as_str()).unwrap_or(""));
-                i = i + 2 + end + 1;
-                continue;
+    let mut rest = input;
+    while let Some(start) = rest.find("${") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        match after.find('}') {
+            Some(end) => {
+                out.push_str(vars.get(&after[..end]).map(|s| s.as_str()).unwrap_or(""));
+                rest = &after[end + 1..];
+            }
+            None => {
+                out.push_str(&rest[start..]);
+                rest = "";
             }
         }
-        out.push(bytes[i] as char);
-        i += 1;
     }
+    out.push_str(rest);
     out
 }
 
@@ -787,6 +802,18 @@ pub fn resolve_cached(paths: &AppPaths, instance: &crate::core::instance::Instan
             loader::profile_file(paths, &id).exists().then_some(())
         }
     }
+}
+
+/// Whether an instance can start without downloading its game: the version (or loader)
+/// profile and the client jar are both on disk. Libraries and assets are re-checked at
+/// every launch, so this is a best-effort badge, not a guarantee.
+pub fn is_installed(paths: &AppPaths, instance: &crate::core::instance::Instance) -> bool {
+    resolve_cached(paths, instance).is_some()
+        && paths
+            .versions_dir()
+            .join(&instance.game_version)
+            .join(format!("{}.jar", instance.game_version))
+            .is_file()
 }
 
 /// Grab the vanilla version id used as the base for a loader profile.
@@ -841,6 +868,25 @@ mod command_tests {
             quick_play: QuickPlay::None,
             logging_arg: None,
         }
+    }
+
+    #[test]
+    fn substitution_keeps_non_ascii_text() {
+        let mut vars = HashMap::new();
+        vars.insert("auth_player_name", "Steve".to_string());
+        assert_eq!(substitute("Größe ${auth_player_name} 名前", &vars), "Größe Steve 名前");
+        assert_eq!(substitute("${unknown}é${", &vars), "é${");
+    }
+
+    #[test]
+    fn initial_heap_never_exceeds_maximum() {
+        let root = Path::new("/data/orbit");
+        let mut ctx = context(VersionJson { main_class: "Main".into(), ..Default::default() }, root);
+        ctx.memory_min = 8192;
+        ctx.memory_max = 2048;
+        let (_, args) = build_command(&ctx).unwrap();
+        assert!(args.contains(&"-Xms2048M".to_string()));
+        assert!(args.contains(&"-Xmx2048M".to_string()));
     }
 
     #[test]

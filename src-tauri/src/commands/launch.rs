@@ -31,6 +31,7 @@ pub async fn launch_instance(
     } else if crate::commands::orbit::is_orbit(state.instances.read().await.get(&id)?) {
         crate::commands::orbit::prepare_launch(&app, &state, &id).await?;
     } else {
+        ensure_loader(&app, &state, &id).await?;
         crate::commands::orbit::prepare_other_launch(&app, &state, &id).await;
     }
     let mut instance = state.instances.read().await.get(&id)?.clone();
@@ -89,6 +90,31 @@ pub async fn launch_instance(
     }
 
     Ok(result)
+}
+
+/// A modded instance needs its loader profile before it can launch. Without a loader build
+/// (created with "install later") or with its profile gone (meta folder cleared, synced
+/// instance), install it now: the newest stable build when none was chosen. Launching
+/// vanilla in its place would silently drop every mod.
+async fn ensure_loader(app: &AppHandle, state: &State<'_, AppState>, id: &str) -> Result<()> {
+    let instance = state.instances.read().await.get(id)?.clone();
+    if instance.loader == crate::core::instance::LoaderKind::Vanilla {
+        return Ok(());
+    }
+    let missing = instance.loader_version.is_none()
+        || crate::core::minecraft::resolve_cached(&state.paths, &instance).is_none();
+    if missing {
+        log::info!("instance {id}: installing its {} loader before launch", instance.loader.as_str());
+        crate::commands::instance::instance_install_loader(
+            app.clone(),
+            state.clone(),
+            id.to_string(),
+            instance.loader_version.clone(),
+            None,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// Return the exact command that would be used, without starting the game.

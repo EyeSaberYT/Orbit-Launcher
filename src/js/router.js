@@ -10,6 +10,7 @@
 //   #/project/:source/:id                project page (source: modrinth | curseforge; ?instance=)
 //   #/settings/:section?                 settings
 //   #/friends                            friends and chats (?chat=<uuid> opens one)
+import { animateSurface } from './motion.js';
 
 const routes = [];
 let current = { cleanup: null, token: 0 };
@@ -104,29 +105,41 @@ async function resolve() {
   listeners.forEach((fn) => fn(path));
 
   const view = document.getElementById('view');
+  const changingView = !!view.querySelector('.page:not([aria-busy])');
   const root = document.createElement('div');
   root.className = 'page';
+  root.setAttribute('aria-busy', 'true');
   view.replaceChildren(root);
   view.scrollTop = 0;
 
   if (!match) {
-    root.innerHTML = '<div class="empty"><h3>Page not found</h3><p><a href="#/">Go home</a></p></div>';
+    root.removeAttribute('aria-busy');
+    root.innerHTML = '<div class="empty"><h1>Page not found</h1><p><a href="#/">Go home</a></p></div>';
     return;
   }
 
+  const loading = document.createElement('div');
+  loading.className = 'loading-block';
+  loading.setAttribute('role', 'status');
+  loading.innerHTML = '<span class="spinner" aria-hidden="true"></span><h1>Opening view</h1>';
+  root.append(loading);
   try {
     const page = await match.load();
     if (token !== current.token) return;
+    loading.remove();
     const cleanup = await page.render(root, params, query);
     if (token !== current.token) {
       cleanup?.();
       return;
     }
     current.cleanup = typeof cleanup === 'function' ? cleanup : null;
+    root.removeAttribute('aria-busy');
+    if (changingView) void animateSurface(root, { from: .85, offset: 4 });
   } catch (error) {
     console.error(error);
     if (token === current.token) {
-      root.innerHTML = `<div class="empty"><h3>This page failed to load</h3><p class="selectable">${String(error?.message ?? error)
+      root.removeAttribute('aria-busy');
+      root.innerHTML = `<div class="empty"><h1>View unavailable</h1><p class="selectable">${String(error?.message ?? error)
         .replace(/</g, '&lt;')}</p></div>`;
     }
   }
@@ -134,5 +147,5 @@ async function resolve() {
 
 export function startRouter() {
   window.addEventListener('hashchange', resolve);
-  resolve();
+  return resolve();
 }

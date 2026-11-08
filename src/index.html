@@ -1,29 +1,37 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" data-type="software" data-radius="round" data-motion="quiet">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Orbit Launcher</title>
+    <meta name="page-type" content="software" />
+    <meta name="site-kind" content="gaming" />
+    <meta name="theme-color" content="#253c35" />
+    <link rel="preload" as="image" href="assets/alpine-meadow.jpg" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="css/shell.css" />
     <link rel="stylesheet" href="css/home.css" />
     <link rel="stylesheet" href="css/instance.css" />
     <link rel="stylesheet" href="css/discover.css" />
     <link rel="stylesheet" href="css/settings.css" />
     <link rel="stylesheet" href="css/friends.css" />
+    <link rel="stylesheet" href="css/shell.css" />
+    <link rel="stylesheet" href="css/brand-logo.css" />
+    <link rel="stylesheet" href="css/repair.css" />
+    <link rel="stylesheet" href="css/news.css" />
+    <link rel="stylesheet" href="css/motion.css" />
     <script type="module" src="js/main.js"></script>
   </head>
   <body>
-    <!-- Deep space behind every page: an aurora and two layers of slowly drifting stars. -->
-    <div class="sky" aria-hidden="true"><div class="sky-stars"></div><div class="sky-stars far"></div></div>
+    <!-- The supplied Minecraft landscape stays visible beneath the glass controls. -->
+    <div class="sky" aria-hidden="true"></div>
 
     <div class="app">
       <!-- The window has no OS title bar: this frosted bar moves it (data-tauri-drag-region,
            double-click maximizes) and main.js adds minimize / maximize / close. -->
-      <header class="topbar glass" data-tauri-drag-region>
+      <header class="topbar" data-tauri-drag-region>
         <a class="topbar-brand" href="#/" aria-label="Orbit Launcher home">
-          <img class="brand-logo" src="assets/logo.png" alt="" />
-          <span class="brand-name">Orbit Launcher</span>
+          <span class="brand-logo orbit-mark" data-asset-id="orbit-smooth-star-logo" aria-hidden="true"></span>
+          <span class="brand-name">orbit<span class="brand-subtitle">Minecraft launcher</span></span>
         </a>
         <div class="topbar-arrows">
           <button class="topbar-arrow" id="nav-back" data-tip="Go back" aria-label="Go back">
@@ -31,11 +39,11 @@
           </button>
         </div>
         <nav class="nav-tabs" id="nav" aria-label="Main">
-          <a class="nav-tab" data-section="home" href="#/">Play</a>
-          <a class="nav-tab" data-section="library" href="#/library">Library</a>
-          <a class="nav-tab" data-section="discover" href="#/discover">Discover</a>
-          <a class="nav-tab" data-section="friends" href="#/friends">Friends<span class="nav-badge" id="friends-badge"></span></a>
-          <a class="nav-tab" data-section="settings" href="#/settings">Settings</a>
+          <a class="nav-tab" data-section="home" href="#/"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7z" /></svg><span>Play</span></a>
+          <a class="nav-tab" data-section="library" href="#/library"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg><span>Library</span></a>
+          <a class="nav-tab" data-section="discover" href="#/discover"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2 6-6 2 2-6z"/></svg><span>Discover</span></a>
+          <a class="nav-tab" data-section="friends" href="#/friends"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 15a5 5 0 0 1 3 5"/></svg><span>Friends</span><span class="nav-badge" id="friends-badge"></span></a>
+          <a class="nav-tab" data-section="settings" href="#/settings"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></a>
         </nav>
         <div class="topbar-fill" data-tauri-drag-region></div>
         <div class="topbar-status" id="topbar-actions"></div>
@@ -43,8 +51,26 @@
         <div class="window-controls" id="window-controls" hidden></div>
       </header>
 
+      <section class="startup-status" id="startup-status" aria-label="Launcher connection" hidden></section>
       <main class="main">
-        <div class="view" id="view"></div>
+        <div class="view" id="view">
+          <div class="boot-loading" id="boot-loading" role="status" aria-live="polite">
+            <div class="boot-card glass">
+              <div class="boot-visual" aria-hidden="true">
+                <svg class="boot-orbit" viewBox="0 0 140 140">
+                  <circle class="boot-track" cx="70" cy="70" r="64" />
+                  <circle class="boot-track" cx="70" cy="70" r="50" />
+                  <path class="boot-comet" d="M70 6a64 64 0 0 1 62 48" />
+                  <path class="boot-comet is-inner" d="M70 20a50 50 0 0 1 43 75" />
+                </svg>
+                <span class="boot-logo orbit-mark" data-asset-id="orbit-smooth-star-logo" aria-hidden="true"></span>
+              </div>
+              <h1 class="boot-title">Starting Orbit</h1>
+              <p class="boot-stage" data-boot-stage>Connecting to your launcher…</p>
+              <p class="boot-hint">Getting your next adventure ready.</p>
+            </div>
+          </div>
+        </div>
         <div class="progress-footer glass" id="progress-footer" hidden></div>
       </main>
     </div>
