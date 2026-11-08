@@ -40,6 +40,11 @@ pub struct Settings {
     /// Put Orbit Client (and Fabric API) into every Fabric instance on a version it supports.
     #[serde(default = "default_true")]
     pub orbit_in_every_instance: bool,
+    /// Start games tuned for frame rate: above-normal priority, the NVIDIA driver's
+    /// Minecraft profile, and no Sodium workaround that turns the driver's threading off
+    /// (see `launch::apply_performance`).
+    #[serde(default = "default_true")]
+    pub performance_launch: bool,
 }
 
 fn default_true() -> bool {
@@ -80,6 +85,7 @@ impl Default for Settings {
             featured_server: default_featured_server(),
             discord_rich_presence: true,
             orbit_in_every_instance: true,
+            performance_launch: true,
         }
     }
 }
