@@ -21,7 +21,7 @@ const LARGE_IMAGE: &str = "orbit-client";
 /// The two buttons under the presence (Discord allows at most two). Only other
 /// people see them; Discord hides them on your own profile.
 const BUTTONS: [(&str, &str); 2] = [
-    ("Join Discord", "https://discord.gg/5D7DrptJ75"),
+    ("Join Discord", "https://discord.gg/zGPCUGE2UF"),
     ("Get Orbit Launcher", "https://github.com/EyeSaberYT/Orbit-Launcher/releases/latest"),
 ];
 
