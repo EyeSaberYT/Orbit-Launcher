@@ -34,6 +34,8 @@ plain HTML/CSS/JavaScript interface, with no frontend build step.
 - Skin viewer (3D) and skin upload.
 - Dark, light and system themes.
 - Signed **in-app updates** from GitHub Releases.
+- **Orbit news** from the same GitHub repository. Publish a `news-` announcement
+  without an app build, or edit a release's notes. See [Publishing Orbit news](docs/publishing-news.md).
 
 ## Project layout
 

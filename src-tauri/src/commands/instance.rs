@@ -347,6 +347,7 @@ pub async fn instance_install_loader(
     state: State<'_, AppState>,
     id: String,
     loader_version: Option<String>,
+    force: Option<bool>,
 ) -> Result<Instance> {
     let (instance, dir) = {
         let store = state.instances.read().await;
@@ -386,6 +387,14 @@ pub async fn instance_install_loader(
         LoaderKind::Forge | LoaderKind::NeoForge => java::for_installer(&state.http, &state.paths, state.sink(&app)).await?.as_path(),
         _ => PathBuf::from("java"),
     };
+
+    // Reinstall: an existing profile would make the install return at once, so a broken
+    // install (e.g. a missing Forge `:client` library) could never be repaired.
+    if force.unwrap_or(false) {
+        loader::validate_version("Minecraft version", &instance.game_version)?;
+        loader::validate_version("Loader version", &resolved)?;
+        loader::remove_profile(&state.paths, &loader::profile_id(instance.loader, &instance.game_version, &resolved))?;
+    }
 
     loader::install_loader(
         &state.http,

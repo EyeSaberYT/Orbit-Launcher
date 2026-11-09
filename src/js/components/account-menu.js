@@ -1,12 +1,19 @@
 // Right of the top bar: the active player's head and name, opening account
 // switching, skin and sign-out.
-import { signIn, signOut, switchAccount } from '../actions.js';
+import { refreshAccounts, signIn, signOut, switchAccount } from '../actions.js';
 import { activeAccount, store } from '../store.js';
 import { html, icon, playerHead, setHtml, showMenu } from '../ui.js';
 
 export function mountAccountMenu(root) {
   const render = () => {
     const account = activeAccount();
+    if (!account && store.state.loadErrors.accounts) {
+      setHtml(
+        root,
+        html`<button class="account-btn is-signin" data-retry-accounts aria-label="Accounts unavailable. Retry loading accounts" title="${store.state.loadErrors.accounts}">${icon('refresh', 'icon-sm')} Retry accounts</button>`,
+      );
+      return;
+    }
     if (!account) {
       setHtml(
         root,
@@ -24,6 +31,7 @@ export function mountAccountMenu(root) {
 
   root.addEventListener('click', (event) => {
     if (event.target.closest('[data-signin]')) return signIn();
+    if (event.target.closest('[data-retry-accounts]')) return refreshAccounts();
     const anchor = event.target.closest('[data-menu]');
     if (!anchor) return;
     const current = activeAccount();
@@ -51,5 +59,5 @@ export function mountAccountMenu(root) {
   });
 
   render();
-  return store.on('accounts', render);
+  return store.on(['accounts', 'loadErrors'], render);
 }

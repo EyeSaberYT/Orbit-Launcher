@@ -1,6 +1,7 @@
 // Shared UI helpers: HTML templating, icons, formatting, toasts, modals,
 // confirm/prompt dialogs, dropdown menus and a few reusable fragments.
 import { errorText, fileSrc } from './tauri.js';
+import { animateSurface, dismissSurface } from './motion.js';
 
 // ==========================================================================
 // DOM & templating
@@ -312,7 +313,10 @@ const isImagePath = (value) => /^(?:[a-zA-Z]:[\\/]|\/|file:)/.test(value);
  * An instance's icon: an image (local path or URL), an emoji, or a gradient
  * monogram. `size` is the edge length in px.
  */
-export function instanceIcon({ icon: value, name, id }, size = 48) {
+export function instanceIcon({ icon: value, name, id, tags }, size = 48) {
+  if (tags?.includes('orbit-client') && !value?.trim()) {
+    return html`<span class="home-orbit-icon orbit-mark" data-asset-id="orbit-smooth-star-logo" style="width:${size}px;height:${size}px" aria-hidden="true"></span>`;
+  }
   const style = `width:${size}px;height:${size}px;border-radius:${Math.round(size / 4)}px`;
   const fallback = html`<div class="inst-icon" style="${style};background:${gradientFor(id)};font-size:${Math.max(11, Math.round(size / 3.2))}px">${initials(name)}</div>`;
   const trimmed = value?.trim();
@@ -351,7 +355,7 @@ export function playerHead(account, size = 36) {
   }
   if (!account?.uuid) return fallback;
   const src = `https://mc-heads.net/avatar/${encodeURIComponent(account.uuid)}/${size * 2}`;
-  return html`<div class="avatar" style="${style}"><img src="${src}" alt="" data-fallback="${String(fallback)}"></div>`;
+  return html`<div class="avatar" style="${style}"><img src="${src}" width="${size}" height="${size}" alt="" data-fallback="${String(fallback)}"></div>`;
 }
 
 export function emptyState({ iconName = 'sparkles', title, description, actions = '' }) {
@@ -466,15 +470,24 @@ const modalStack = [];
  *   onClose: called once when the modal closes, however it closes
  * Returns { root, body, foot, close, setDismissable }.
  */
-export function openModal({ title, description, body = '', footer = '', size = 'md', dismissable = true, onClose } = {}) {
+let modalIds = 0;
+
+export function openModal({ title, description, body = '', footer = '', size = 'md', dismissable = true, onClose, ariaLabel } = {}) {
+  const previousFocus = document.activeElement;
+  // Screen readers announce a dialog by its title (or an explicit label when it has none).
+  const titleId = `modal-title-${++modalIds}`;
+  const descId = `modal-desc-${modalIds}`;
+  const naming = title
+    ? html`aria-labelledby="${titleId}"${description ? html` aria-describedby="${descId}"` : ''}`
+    : ariaLabel ? html`aria-label="${ariaLabel}"` : '';
   const backdrop = el(html`
     <div class="modal-backdrop">
-      <div class="modal modal-${size}" role="dialog" aria-modal="true">
+      <div class="modal modal-${size}" role="dialog" aria-modal="true" tabindex="-1" ${naming}>
         ${(title || description) &&
         html`<div class="modal-head">
           <div class="grow">
-            ${title && html`<h2>${title}</h2>`}
-            ${description && html`<p>${description}</p>`}
+            ${title && html`<h2 id="${titleId}">${title}</h2>`}
+            ${description && html`<p id="${descId}">${description}</p>`}
           </div>
           <button class="btn btn-ghost btn-icon btn-sm modal-close" data-close aria-label="Close">${icon('x')}</button>
         </div>`}
@@ -484,15 +497,17 @@ export function openModal({ title, description, body = '', footer = '', size = '
     </div>`);
 
   let closed = false;
-  const entry = { dismissable, close };
+  const entry = { dismissable, close, root: backdrop.querySelector('.modal') };
 
   function close() {
     if (closed) return;
     closed = true;
     const index = modalStack.indexOf(entry);
     if (index >= 0) modalStack.splice(index, 1);
-    backdrop.remove();
+    void dismissSurface(backdrop);
     onClose?.();
+    const top = modalStack.at(-1);
+    if (previousFocus?.isConnected && (!top || top.root.contains(previousFocus))) previousFocus.focus({ preventScroll: true });
   }
 
   backdrop.addEventListener('mousedown', (event) => {
@@ -503,9 +518,11 @@ export function openModal({ title, description, body = '', footer = '', size = '
   });
 
   $('#modals').appendChild(backdrop);
+  void animateSurface(backdrop, { offset: 0 });
+  void animateSurface(backdrop.querySelector('.modal'));
   modalStack.push(entry);
   wireImages(backdrop);
-  backdrop.querySelector('[autofocus], .modal-body input:not([type=checkbox]):not([type=range]), .modal-body textarea')?.focus();
+  (backdrop.querySelector('[autofocus], .modal-body input:not([type=checkbox]):not([type=range]), .modal-body textarea') ?? entry.root).focus({ preventScroll: true });
 
   return {
     root: backdrop.querySelector('.modal'),
@@ -524,9 +541,18 @@ export function openModal({ title, description, body = '', footer = '', size = '
 }
 
 document.addEventListener('keydown', (event) => {
+  const top = modalStack.at(-1);
+  if (event.key === 'Tab' && top) {
+    const items = [...top.root.querySelectorAll('button:not(:disabled),a[href],input:not(:disabled):not([type=hidden]),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])')].filter(node => node.getClientRects().length && !node.closest('[inert]'));
+    if (!items.length) { event.preventDefault(); top.root.focus(); }
+    else if (!top.root.contains(document.activeElement) || document.activeElement === top.root || (event.shiftKey && document.activeElement === items[0])) {
+      event.preventDefault(); items[event.shiftKey ? items.length - 1 : 0].focus();
+    } else if (!event.shiftKey && document.activeElement === items.at(-1)) {
+      event.preventDefault(); items[0].focus();
+    }
+  }
   if (event.key !== 'Escape') return;
   if (closeMenu()) return;
-  const top = modalStack[modalStack.length - 1];
   if (top?.dismissable) top.close();
 });
 
@@ -594,8 +620,12 @@ let openMenuState = null;
 /** Close the open dropdown menu. Returns true when one was open. */
 export function closeMenu() {
   if (!openMenuState) return false;
-  openMenuState.node.remove();
-  document.removeEventListener('mousedown', openMenuState.outside, true);
+  const { node, anchor, outside } = openMenuState;
+  const restoreFocus = node.contains(document.activeElement);
+  void dismissSurface(node);
+  document.removeEventListener('mousedown', outside, true);
+  anchor.setAttribute('aria-expanded', 'false');
+  if (restoreFocus && anchor.isConnected) anchor.focus({ preventScroll: true });
   openMenuState = null;
   return true;
 }
@@ -615,7 +645,7 @@ export function showMenu(anchor, items, { align = 'start', placement = 'below' }
       ${items.map((item, index) => {
         if (item.separator) return html`<div class="menu-sep"></div>`;
         if (item.header) return html`<div class="menu-label">${item.header}</div>`;
-        return html`<button class="menu-item ${item.danger ? 'danger' : ''}" data-index="${index}" ${item.disabled ? raw('disabled') : ''}>
+        return html`<button class="menu-item ${item.danger ? 'danger' : ''}" role="menuitem" data-index="${index}" ${item.disabled ? raw('disabled') : ''}>
           ${item.icon ? icon(item.icon) : item.leading ? raw(item.leading) : ''}
           <span class="truncate">${item.label}</span>
           ${item.trail && html`<span class="trail">${item.trail}</span>`}
@@ -640,10 +670,24 @@ export function showMenu(anchor, items, { align = 'start', placement = 'below' }
   left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
   node.style.left = `${left}px`;
   node.style.top = `${Math.max(8, top)}px`;
+  anchor.setAttribute('aria-expanded', 'true');
+  void animateSurface(node);
+  if (anchor.matches(':focus-visible')) node.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+  node.addEventListener('keydown', event => {
+    const buttons = [...node.querySelectorAll('button:not(:disabled)')];
+    const index = buttons.indexOf(document.activeElement);
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && buttons.length) {
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+        : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next].focus({ preventScroll: true });
+    }
+    if (event.key === 'Tab') closeMenu();
+  });
 
   node.addEventListener('click', (event) => {
     const button = event.target.closest('[data-index]');
-    if (!button) return;
+    if (!button || button.disabled) return;
     const item = items[Number(button.dataset.index)];
     closeMenu();
     item?.onSelect?.();

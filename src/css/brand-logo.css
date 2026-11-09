@@ -1,0 +1,32 @@
+/* Logo-only integration. The approved launcher layout and glass surfaces stay intact. */
+:root {
+  --logo-corner: 0px;
+  --logo-light: #FFFFFF;
+  --logo-dark: #000000;
+  --logo-ink: var(--logo-light);
+  --logo-header-ink: var(--logo-light);
+  --logo-wordmark-ink: var(--logo-light);
+  --logo-mask: url('../assets/logo.svg');
+}
+:root[data-theme='light'] { --logo-ink: var(--logo-dark); }
+/* Keep the header identity white and bring the stars closer to the wordmark. */
+.topbar-brand { gap: 2px; }
+.orbit-mark {
+  display: inline-block;
+  flex: none;
+  background: transparent var(--logo-mask) center / contain no-repeat;
+  mask: none;
+  -webkit-mask: none;
+}
+/* The wordmark stays separate from the transparent star artwork. */
+.topbar-brand .brand-name { color: var(--logo-wordmark-ink); }
+.brand-logo,
+.home-orbit-icon,
+.home-instance-row .home-orbit-icon,
+.boot-logo {
+  border-radius: var(--logo-corner);
+  object-fit: contain;
+  image-rendering: auto;
+  box-shadow: none;
+  filter: none;
+}

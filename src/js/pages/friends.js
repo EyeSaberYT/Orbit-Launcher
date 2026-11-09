@@ -14,6 +14,7 @@ export function render(root, _params, query) {
   let tab = prefs.get('friends.tab', 'friends');
   if (!TABS.includes(tab)) tab = 'friends';
   let selected = query.get('chat') ?? prefs.get('friends.chat', null);
+  let listScroll = 0;
   if (query.get('chat')) tab = 'friends';
 
   setHtml(
@@ -29,7 +30,7 @@ export function render(root, _params, query) {
         <aside class="friends-side">
           <div class="segmented friends-tabs" data-tabs></div>
           <form class="friends-add" data-add>
-            <input class="input" data-name maxlength="16" placeholder="Add by Minecraft name" autocomplete="off" spellcheck="false">
+            <input class="input" data-name maxlength="16" aria-label="Minecraft name" placeholder="Add by Minecraft name" autocomplete="off" spellcheck="false">
             <button class="btn btn-primary" type="submit">${icon('plus', 'icon-sm')} Add</button>
           </form>
           <div class="friends-list" data-list></div>
@@ -123,6 +124,7 @@ export function render(root, _params, query) {
   let renderedChat = null;
   const drawChat = () => {
     const friend = tab === 'friends' ? store.state.social.friends.find((f) => f.uuid === selected) : null;
+    root.classList.toggle('friends-chat-open', !!friend);
     setOpenChat(friend?.uuid ?? null);
     if (!friend) {
       renderedChat = null;
@@ -145,6 +147,7 @@ export function render(root, _params, query) {
       chatEl,
       html`
         <div class="friends-chat-head">
+          <button class="btn btn-outline friends-back" data-back-friends aria-label="Back to friends">${icon('chevron-left')} Back</button>
           <span class="friend-head">${playerHead({ uuid: friend.uuid, username: friendName(friend) }, 36)}<i class="friend-dot ${friend.online ? 'on' : ''}"></i></span>
           <div class="grow" style="min-width:0">
             <h2 class="truncate">${friendName(friend)}</h2>
@@ -163,7 +166,7 @@ export function render(root, _params, query) {
             : html`<div class="small muted friends-hello">Say hi to ${friendName(friend)}!</div>`}
         </div>
         <form class="friends-send" data-send>
-          <input class="input" data-text maxlength="256" placeholder="Message ${friendName(friend)}" autocomplete="off">
+          <input class="input" data-text maxlength="256" aria-label="Message ${friendName(friend)}" placeholder="Message ${friendName(friend)}" autocomplete="off">
           <button class="btn btn-primary" type="submit">Send</button>
         </form>`,
     );
@@ -179,7 +182,7 @@ export function render(root, _params, query) {
   let chatKey = '';
   const drawChatIfChanged = () => {
     const friend = store.state.social.friends.find((f) => f.uuid === selected);
-    const key = JSON.stringify([tab, selected, friend, (store.state.chats.get(selected) ?? []).length]);
+    const key = JSON.stringify([tab, selected, friend, (store.state.chats.get(selected) ?? []).length, (store.state.chats.get(selected) ?? []).at(-1)?.id]);
     if (key === chatKey) return;
     chatKey = key;
     drawChat();
@@ -193,6 +196,15 @@ export function render(root, _params, query) {
 
   root.addEventListener('click', async (event) => {
     const t = event.target;
+    if (t.closest('[data-back-friends]')) {
+      const previous = selected;
+      selected = null;
+      prefs.set('friends.chat', null);
+      draw();
+      listEl.scrollTop = listScroll;
+      [...listEl.querySelectorAll('[data-select]')].find(row => row.dataset.select === previous)?.focus({ preventScroll: true });
+      return;
+    }
     const tabBtn = t.closest('[data-tab]');
     if (tabBtn) {
       tab = tabBtn.dataset.tab;
@@ -224,6 +236,7 @@ export function render(root, _params, query) {
     }
     const row = t.closest('button.friend-row[data-select]');
     if (row) {
+      listScroll = listEl.scrollTop;
       selected = row.dataset.select;
       prefs.set('friends.chat', selected);
       draw();
