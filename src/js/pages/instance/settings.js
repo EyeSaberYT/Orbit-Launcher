@@ -470,7 +470,8 @@ export function openInstanceSettings(ctx, { panel: initialPanel = 'general', onC
     pane.querySelector('[data-loader-version]').disabled = true;
     const label = `${loaderLabel(ctx.instance.loader)} ${version}`;
     try {
-      const updated = await api.instances.installLoader(id, version);
+      // "Reinstall" of the same build starts over, so a damaged install can be repaired.
+      const updated = await api.instances.installLoader(id, version, version === ctx.instance.loaderVersion);
       toast(`Installed ${label}`, { kind: 'success' });
       refreshInstances();
       installing = false;

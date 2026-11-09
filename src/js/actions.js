@@ -7,11 +7,16 @@ import { confirmDialog, html, icon, openModal, spinner, toast, toastError } from
 
 // ---------- Loading ----------
 
+function loadError(key, error = null) {
+  store.update('loadErrors', (errors) => ({ ...errors, [key]: error === null ? null : errorText(error) }));
+}
+
 export async function refreshInstances() {
   try {
     store.set('instances', await api.instances.list());
+    loadError('instances');
   } catch (error) {
-    toastError(error, "Couldn't load your instances");
+    loadError('instances', error);
   } finally {
     if (!store.state.instancesLoaded) store.set('instancesLoaded', true);
   }
@@ -20,8 +25,9 @@ export async function refreshInstances() {
 export async function refreshAccounts() {
   try {
     store.set('accounts', await api.auth.accounts());
+    loadError('accounts');
   } catch (error) {
-    toastError(error, "Couldn't load your accounts");
+    loadError('accounts', error);
   }
 }
 
@@ -47,10 +53,27 @@ export async function refreshRunning() {
 }
 
 export async function loadSettings() {
-  const [settings, info] = await Promise.all([api.system.getSettings(), api.system.appInfo()]);
-  store.set('settings', settings);
-  store.set('info', info);
-  applyTheme(settings.theme);
+  try {
+    const [settings, info] = await Promise.all([api.system.getSettings(), api.system.appInfo()]);
+    store.set('settings', settings);
+    store.set('info', info);
+    applyTheme(settings.theme);
+    loadError('settings');
+  } catch (error) {
+    loadError('settings', error);
+    throw error;
+  }
+}
+
+/** One retry for related startup failures; repeated clicks cannot duplicate requests. */
+export async function refreshLauncherData() {
+  if (store.state.refreshingData) return;
+  store.set('refreshingData', true);
+  try {
+    await Promise.allSettled([loadSettings(), refreshInstances(), refreshAccounts(), refreshRunning()]);
+  } finally {
+    store.set('refreshingData', false);
+  }
 }
 
 /** Save a partial settings change. Resolves with the saved settings. */
@@ -76,10 +99,10 @@ lightQuery.addEventListener('change', () => applyTheme(store.state.settings?.the
 // ---------- Accent colour ----------
 // Like the theme in Aether, the accent is a per-device preference kept in localStorage.
 
-// The first accent is the stylesheet's own (Orbit periwinkle), so choosing it
-// clears the overrides and the light theme's deeper blue applies again.
+// The first accent uses the alpine glass palette from the stylesheet, so
+// choosing it also restores the light theme's deeper green.
 export const ACCENTS = [
-  { id: 'orbit', label: 'Orbit', color: '#6e8cff' },
+  { id: 'orbit', label: 'Orbit', color: '#c8eda4' },
   { id: 'violet', label: 'Violet', color: '#a06cf0' },
   { id: 'cyan', label: 'Cyan', color: '#4fc3ff' },
   { id: 'green', label: 'Green', color: '#3fd07a' },
@@ -89,14 +112,14 @@ export const ACCENTS = [
 
 const DEFAULT_ACCENT = ACCENTS[0].id;
 // A new key again: the old one is written on every start, so it holds green for
-// everyone, and the Orbit look starts on the Orbit accent.
+// everyone. The Orbit accent now follows the alpine palette.
 const ACCENT_KEY = 'orbit.accentChoice';
 const ACCENT_PROPERTIES = ['--primary', '--primary-2', '--primary-soft', '--primary-line', '--primary-glow', '--on-primary'];
 
 /** { id, custom } — the chosen accent and the last custom colour. */
 export function currentAccent() {
   let id = DEFAULT_ACCENT;
-  let custom = '#6e8cff';
+  let custom = '#c8eda4';
   try {
     id = localStorage.getItem(ACCENT_KEY) ?? id;
     custom = localStorage.getItem('orbit.customAccent') ?? custom;
@@ -148,6 +171,15 @@ export async function launchInstance(id, quickPlay) {
   // A running instance can be launched again (multi-launching); one launch at a time each.
   if (store.state.launching.has(id)) return;
   const another = store.state.running.has(id);
+  if (!activeAccount() && store.state.loadErrors.accounts) {
+    // The account list failed to load: the player may well be signed in already.
+    toast("Your accounts couldn't be loaded", {
+      kind: 'error',
+      description: store.state.loadErrors.accounts,
+      actions: [{ label: 'Retry', onClick: () => refreshAccounts() }],
+    });
+    return;
+  }
   if (!activeAccount()) {
     toast('Sign in with your Microsoft account to play.', { kind: 'warn' });
     signIn();

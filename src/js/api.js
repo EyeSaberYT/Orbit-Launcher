@@ -13,7 +13,24 @@
 //              checkUpdatesOnStart, showSnapshots, closeOnLaunch, keepLauncherOpen,
 //              theme: 'dark'|'light'|'system', modrinthApiUrl, featuredServer, discordRichPresence }
 //   Progress { stage, label, current, total, filesDone, filesTotal, finished }
-import { invoke } from './tauri.js';
+import { invoke as call } from './tauri.js';
+
+// Long-running commands report through `download://progress` and only send a
+// `finished` snapshot when they succeed. When one fails, the footer would keep
+// spinning on its last label, so failures are announced for main.js to clear it.
+const TRACKED = new Set([
+  'launch_instance', 'instance_create', 'instance_install_loader', 'modrinth_install',
+  'modrinth_install_modpack', 'modrinth_apply_update', 'modrinth_update_all', 'modpack_import',
+  'import_instances', 'orbit_client_install', 'java_install',
+]);
+function invoke(command, args) {
+  const result = call(command, args);
+  if (!TRACKED.has(command)) return result;
+  return result.catch((error) => {
+    window.dispatchEvent(new CustomEvent('orbit:task-failed', { detail: { command } }));
+    throw error;
+  });
+}
 
 export const auth = {
   accounts: () => invoke('auth_accounts'),
@@ -48,8 +65,9 @@ export const instances = {
   rename: (id, name) => invoke('instance_rename', { id, name }),
   duplicate: (id, name) => invoke('instance_duplicate', { id, name: name ?? null }),
   remove: (id, deleteFiles) => invoke('instance_delete', { id, deleteFiles }),
-  installLoader: (id, loaderVersion) =>
-    invoke('instance_install_loader', { id, loaderVersion: loaderVersion ?? null }),
+  /** force: delete the installed profile first, so a broken loader install can be repaired. */
+  installLoader: (id, loaderVersion, force = false) =>
+    invoke('instance_install_loader', { id, loaderVersion: loaderVersion ?? null, force }),
   /** ContentEntry[] { name, path, enabled, size, kind, projectId, versionId, title, iconUrl } */
   content: (id) => invoke('instance_content', { id }),
   toggleContent: (id, path, enabled) => invoke('instance_toggle_content', { id, path, enabled }),

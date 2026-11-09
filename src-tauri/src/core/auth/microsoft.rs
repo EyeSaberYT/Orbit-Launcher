@@ -92,8 +92,37 @@ struct OAuthError {
     error: String,
     #[serde(default)]
     error_description: String,
-    #[serde(default)]
+}
+
+/// XSTS failures: `{"Identity":"0","XErr":2148916233,"Message":"","Redirect":"…"}`.
+/// Not an OAuth error body, so it has its own (all optional) shape.
+#[derive(Deserialize, Default)]
+struct XstsError {
+    #[serde(rename = "XErr", default)]
     xerr: Option<u64>,
+}
+
+/// The player-facing explanation for an XSTS `XErr` code.
+fn xsts_message(xerr: Option<u64>) -> String {
+    match xerr {
+        Some(2148916233) => {
+            "This Microsoft account has no Xbox profile yet. Sign in at xbox.com once, then try again.".into()
+        }
+        Some(2148916227) => "This account is banned from Xbox Live.".into(),
+        Some(2148916229) => {
+            "Parental controls on this account block online play. A parent can change this at account.microsoft.com/family."
+                .into()
+        }
+        Some(2148916235) => "Xbox Live is not available in your region.".into(),
+        Some(2148916236) | Some(2148916237) => {
+            "This account needs adult verification before it can play Minecraft.".into()
+        }
+        Some(2148916238) => {
+            "This is a child account. Ask a family organiser to add it to a Microsoft Family group.".into()
+        }
+        Some(code) => format!("Xbox Live rejected the sign-in (error {code}). Please try again later."),
+        None => "Xbox Live rejected the sign-in. Please try again later.".into(),
+    }
 }
 
 #[derive(Deserialize)]
@@ -215,7 +244,6 @@ pub async fn poll_for_token(
         let err: OAuthError = res.json().await.unwrap_or(OAuthError {
             error: "unknown_error".into(),
             error_description: String::new(),
-            xerr: None,
         });
 
         match err.error.as_str() {
@@ -357,25 +385,9 @@ pub async fn xbox_chain(
         .await?;
 
     if !xsts_res.status().is_success() {
-        let err: OAuthError = xsts_res.json().await.unwrap_or(OAuthError {
-            error: "xsts_error".into(),
-            error_description: String::new(),
-            xerr: None,
-        });
-        let message = match err.xerr {
-            Some(2148916233) => {
-                "This Microsoft account has no Xbox profile yet. Sign in at xbox.com once, then try again."
-            }
-            Some(2148916235) => "Xbox Live is not available in your region.",
-            Some(2148916236) | Some(2148916237) => {
-                "This account needs adult verification before it can play Minecraft."
-            }
-            Some(2148916238) => {
-                "This is a child account. Ask a family organiser to add it to a Microsoft Family group."
-            }
-            _ => "Xbox Live rejected the sign-in. Please try again later.",
-        };
-        return Err(LauncherError::Auth(message.into()));
+        let body = xsts_res.text().await.unwrap_or_default();
+        let err: XstsError = serde_json::from_str(&body).unwrap_or_default();
+        return Err(LauncherError::Auth(xsts_message(err.xerr)));
     }
 
     let xsts: XblResponse = xsts_res.json().await?;
@@ -426,8 +438,12 @@ pub async fn fetch_profile(
         .await?;
 
     if res.status() == reqwest::StatusCode::NOT_FOUND {
+        // No profile: either the game isn't owned, or it is (e.g. through Game Pass)
+        // but no player name has been chosen yet. `login` tells these apart when the
+        // entitlement check could answer.
         return Err(LauncherError::Auth(
-            "This Microsoft account doesn't own Minecraft: Java Edition.".into(),
+            "This Microsoft account has no Minecraft: Java Edition profile. If you own the game              (including through PC Game Pass), sign in once at minecraft.net and choose a              player name, then try again."
+                .into(),
         ));
     }
     if !res.status().is_success() {
@@ -480,8 +496,9 @@ pub async fn skin_for_account(
     Ok(skin)
 }
 
-/// Confirm the account actually owns the game.
-pub async fn check_entitlements(http: &reqwest::Client, mc_access_token: &str) -> Result<()> {
+/// Whether the account holds any Minecraft entitlement: `Some(true)`/`Some(false)` when
+/// the service answered, `None` when it couldn't say (an error status or an odd body).
+pub async fn check_entitlements(http: &reqwest::Client, mc_access_token: &str) -> Result<Option<bool>> {
     let res = http
         .get(MC_ENTITLEMENTS_URL)
         .bearer_auth(mc_access_token)
@@ -489,18 +506,10 @@ pub async fn check_entitlements(http: &reqwest::Client, mc_access_token: &str) -
         .await?;
 
     if !res.status().is_success() {
-        // Not fatal: some accounts legitimately return 204/404 here.
-        return Ok(());
+        log::warn!("entitlement check returned HTTP {}", res.status());
+        return Ok(None);
     }
-
-    if let Ok(entitlements) = res.json::<McEntitlements>().await {
-        if entitlements.items.is_empty() {
-            return Err(LauncherError::Auth(
-                "This Microsoft account doesn't own Minecraft: Java Edition.".into(),
-            ));
-        }
-    }
-    Ok(())
+    Ok(res.json::<McEntitlements>().await.ok().map(|e| !e.items.is_empty()))
 }
 
 // ---------------------------------------------------------------------------
@@ -526,8 +535,17 @@ where
         poll_for_token(http, client_id, &device_code, interval, info.expires_in).await?;
 
     let (mc_token, expires_in) = xbox_chain(http, &ms_token).await?;
-    check_entitlements(http, &mc_token).await.ok();
-    let (uuid, name, skin_url) = fetch_profile(http, &mc_token).await?;
+    let owns = check_entitlements(http, &mc_token).await.ok().flatten();
+    let (uuid, name, skin_url) = match fetch_profile(http, &mc_token).await {
+        Ok(profile) => profile,
+        // The service said plainly that nothing is owned: say that, not "pick a name".
+        Err(LauncherError::Auth(_)) if owns == Some(false) => {
+            return Err(LauncherError::Auth(
+                "This Microsoft account doesn't own Minecraft: Java Edition.".into(),
+            ))
+        }
+        Err(error) => return Err(error),
+    };
 
     Ok(Account {
         kind: AccountKind::Microsoft,
@@ -584,6 +602,18 @@ pub fn dashify_uuid(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn xsts_error_codes_are_read_from_the_real_body_shape() {
+        let body = r#"{"Identity":"0","XErr":2148916233,"Message":"","Redirect":"https://start.ui.xboxlive.com/CreateAccount"}"#;
+        let err: XstsError = serde_json::from_str(body).unwrap();
+        assert_eq!(err.xerr, Some(2148916233));
+        assert!(xsts_message(err.xerr).contains("no Xbox profile"));
+        assert!(xsts_message(Some(2148916229)).contains("Parental controls"));
+        // An unknown or unreadable body still gives a message, never a panic.
+        let empty: XstsError = serde_json::from_str("{}").unwrap();
+        assert!(xsts_message(empty.xerr).contains("rejected"));
+    }
 
     #[test]
     fn texture_urls_are_upgraded_to_https() {

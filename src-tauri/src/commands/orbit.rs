@@ -131,7 +131,7 @@ pub async fn orbit_client_install(app: AppHandle, state: State<'_, AppState>) ->
 async fn repair(app: &AppHandle, state: &State<'_, AppState>, id: &str) -> Result<()> {
     let instance = state.instances.read().await.get(id)?.clone();
     if instance.loader_version.is_none() {
-        instance_install_loader(app.clone(), state.clone(), id.to_string(), None).await?;
+        instance_install_loader(app.clone(), state.clone(), id.to_string(), None, None).await?;
     }
     ensure_fabric_api(app, state, &instance).await
 }

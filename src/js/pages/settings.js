@@ -2,11 +2,12 @@
 // screen with seven panels. Edits collect in a draft that the "Save changes"
 // footer commits, while the theme and accent colour apply (and save) immediately.
 import * as api from '../api.js';
-import { applyAccent, ACCENTS, currentAccent, saveSettings } from '../actions.js';
+import { applyAccent, ACCENTS, currentAccent, refreshLauncherData, saveSettings } from '../actions.js';
 import { navigate } from '../router.js';
 import { store } from '../store.js';
 import { formatBytes, html, icon, openModal, setHtml, spinner, toast, toastError } from '../ui.js';
 import { checkForUpdates, installUpdate, relaunchApp } from '../updater.js';
+import { animateSurface } from '../motion.js';
 
 const JAVA_MAJORS = [8, 16, 17, 21, 25];
 const RELEASES_URL = 'https://github.com/EyeSaberYT/Orbit-Launcher/releases/latest';
@@ -31,7 +32,7 @@ let openDialog = null;
 export function openSettings(initialPanel = 'general') {
   if (openDialog && !openDialog.closed) return;
   let cleanup = () => {};
-  openDialog = openModal({ size: 'xl', onClose: () => cleanup() });
+  openDialog = openModal({ size: 'xl', ariaLabel: 'Settings', onClose: () => cleanup() });
   openDialog.root.classList.add('settings-dialog');
   cleanup = mount(openDialog.body, PANELS.some((p) => p.id === initialPanel) ? initialPanel : 'general', openDialog.close);
 }
@@ -56,7 +57,10 @@ function mount(root, initialPanel, close) {
   const draw = () => {
     if (disposed) return;
     if (!store.state.settings || !draft) {
-      setHtml(root, html`<div class="settings-popup settings-loading">Loading launcher preferences…</div>`);
+      const failed = store.state.loadErrors.settings;
+      setHtml(root, failed
+        ? html`<div class="settings-popup settings-loading" role="alert"><div class="stack"><p>Launcher preferences couldn't be loaded.</p><p class="small muted">${failed}</p><div class="row-wrap"><button class="btn btn-outline btn-sm" data-retry-settings ${store.state.refreshingData ? 'disabled' : ''}>${icon('refresh')} ${store.state.refreshingData ? 'Retrying…' : 'Try again'}</button></div></div></div>`
+        : html`<div class="settings-popup settings-loading">Loading launcher preferences…</div>`);
       return;
     }
     setHtml(
@@ -66,7 +70,7 @@ function mount(root, initialPanel, close) {
           <header class="settings-popup-header">
             <div class="grow">
               <p class="eyebrow" style="color:var(--primary)">Launcher preferences</p>
-              <h1>Settings</h1>
+              <h2 class="settings-title">Settings</h2>
               <p class="small muted">Configure Orbit Launcher for your setup.</p>
             </div>
             <button class="btn btn-ghost btn-icon" data-close-settings aria-label="Close settings">${icon('x')}</button>
@@ -289,7 +293,7 @@ function mount(root, initialPanel, close) {
         'refresh',
         'Updates',
         'Keep Orbit Launcher up to date.',
-        html`${body}<p class="tiny muted" style="margin-top:16px">Need an installer? <a data-open-url="${RELEASES_URL}">Browse releases ${icon('external', 'icon-sm')}</a></p>`,
+        html`${body}<p class="tiny muted" style="margin-top:16px">Need an installer? <a href="${RELEASES_URL}" data-open-url="${RELEASES_URL}">Browse releases ${icon('external', 'icon-sm')}</a></p>`,
       );
     },
 
@@ -375,11 +379,15 @@ function mount(root, initialPanel, close) {
 
   root.addEventListener('click', (event) => {
     const target = event.target;
+    if (target.closest('[data-retry-settings]')) return void refreshLauncherData();
     const nav = target.closest('[data-panel]');
     if (nav) {
+      if (panel === nav.dataset.panel) return;
       panel = nav.dataset.panel;
       if (panel === 'java') refreshJava();
-      return draw();
+      draw();
+      root.querySelector(`[data-panel="${CSS.escape(panel)}"]`)?.focus({ preventScroll: true });
+      return void animateSurface(root.querySelector('.settings-pane'), { from: .85, offset: 4 });
     }
     if (target.closest('[data-close-settings]')) return close();
     if (target.closest('[data-save]')) return persist();
@@ -410,7 +418,7 @@ function mount(root, initialPanel, close) {
     }
   });
 
-  const offSettings = store.on(['settings', 'info'], () => {
+  const offSettings = store.on(['settings', 'info', 'loadErrors', 'refreshingData'], () => {
     const saved = store.state.settings;
     const kept = draft ? Object.fromEntries([...edited].map((key) => [key, draft[key]])) : {};
     draft = saved ? { ...saved, ...kept } : null;

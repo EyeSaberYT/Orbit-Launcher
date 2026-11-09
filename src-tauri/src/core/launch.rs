@@ -140,7 +140,12 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
         .or_else(|| settings.java_path.clone());
 
     let mut runtime = java::detect(paths, explicit.as_deref(), required).await;
-    if runtime.as_ref().map(|r| r.major < required).unwrap_or(true) {
+    // A Java the player picked is used whenever it's new enough; otherwise the runtime has
+    // to suit the version (legacy versions need exactly Java 8, not just "8 or newer").
+    let usable = |r: &java::JavaRuntime| {
+        if r.source == "explicit" { r.major >= required } else { java::suits(r.major, required) }
+    };
+    if !runtime.as_ref().map(usable).unwrap_or(false) {
         sink(Progress::new(
             "java",
             format!("Java {required} is missing — downloading it for you…"),
@@ -758,6 +763,8 @@ pub struct InstanceSummary {
     pub play_time_secs: u64,
     pub mod_count: usize,
     pub installed: bool,
+    /// The instance's maximum memory in MiB (its own setting, not the launcher default).
+    pub memory_max: u32,
     /// Free-form tags; orbit-client marks the managed Orbit Client instance.
     pub tags: Vec<String>,
 }
@@ -788,7 +795,8 @@ pub fn summarize(paths: &AppPaths, instance: &Instance) -> InstanceSummary {
         last_played: instance.last_played.clone(),
         play_time_secs: instance.play_time_secs,
         mod_count,
-        installed: minecraft::resolve_cached(paths, instance).is_some(),
+        installed: minecraft::is_installed(paths, instance),
+        memory_max: instance.settings.memory_max,
         tags: instance.tags.clone(),
     }
 }

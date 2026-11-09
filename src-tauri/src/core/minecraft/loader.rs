@@ -244,6 +244,19 @@ pub fn profile_file(paths: &AppPaths, id: &str) -> PathBuf {
     paths.versions_dir().join(id).join(format!("{id}.json"))
 }
 
+/// Delete an installed loader profile (its `versions/<id>/` folder), so the next install
+/// starts over instead of finding the old profile and returning early. Used by "Reinstall".
+pub fn remove_profile(paths: &AppPaths, id: &str) -> Result<()> {
+    let file = profile_file(paths, id);
+    if let Some(dir) = file.parent() {
+        // `id` is built from validated versions, but stay inside versions/ regardless.
+        if dir.starts_with(paths.versions_dir()) && dir != paths.versions_dir() && dir.is_dir() {
+            std::fs::remove_dir_all(dir)?;
+        }
+    }
+    Ok(())
+}
+
 /// True when the loader profile has already been installed.
 pub fn is_installed(paths: &AppPaths, id: &str) -> bool {
     profile_file(paths, id).exists()

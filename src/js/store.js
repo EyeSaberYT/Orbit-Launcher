@@ -12,6 +12,9 @@ const state = {
   /** InstanceSummary[] */
   instances: [],
   instancesLoaded: false,
+  /** Failed loads are unavailable data, not a confirmed empty collection. */
+  loadErrors: { settings: null, instances: null, accounts: null },
+  refreshingData: false,
   /** Ids of instances with a game process running. */
   running: new Set(),
   /** Per instance id, how many of its games are running (multi-launching). */

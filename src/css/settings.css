@@ -24,7 +24,7 @@
   border-bottom: 1px solid var(--line);
 }
 
-.settings-popup-header h1 {
+.settings-popup-header .settings-title {
   margin: 4px 0;
   font-size: 21px;
 }

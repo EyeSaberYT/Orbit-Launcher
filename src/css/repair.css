@@ -1,0 +1,122 @@
+/* Bounded accessibility and data-state repairs. Existing brand tokens and kit stay intact. */
+:root {
+  --hit-target: 44px;
+  --readable-meta: 11px;
+  --repair-gap: 12px;
+  --repair-tracking: .04em;
+  --repair-body: 14px;
+  --repair-small: 12px;
+}
+
+/* The element itself owns the hit area, including compact glyph-only controls. */
+body :is(button, a[href], input:not([type='checkbox']):not([type='radio']), select, textarea, [role='button']) {
+  min-inline-size: var(--hit-target);
+  min-block-size: var(--hit-target);
+}
+body a[href] { display: inline-flex; align-items: center; }
+.window-controls { height: var(--hit-target); }
+.brand-subtitle, .home-section-label, .home-footer, .home-library-head h2 > span,
+.topbar-status .chip, .home-instance-meta > span { font-size: var(--readable-meta); }
+.brand-subtitle, .home-section-label { letter-spacing: var(--repair-tracking); }
+.home-instance-meta { flex-wrap: wrap; gap: var(--repair-gap); }
+body button:disabled { cursor: not-allowed; }
+.home-round-btn:disabled { opacity: .6; transform: none; }
+.home-state.is-unavailable i { background: var(--muted); box-shadow: none; }
+
+/* Match the Play container's material, edge and highlight on the small shell
+   surfaces. Extra tint keeps labels readable against the pale mountain sky. */
+.nav-tabs, .account-btn, .brand-subtitle, .topbar-status > .chip:first-child,
+.topbar-status .chip.is-live, .window-controls, .startup-status {
+  background: var(--chrome-glass);
+  border-color: var(--line-strong);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+.nav-tab, .account-btn, .account-btn.is-signin { color: var(--text); }
+.nav-tab:hover, .nav-tab.active, .account-btn:hover { color: var(--heading); }
+.nav-tab:hover { background: var(--panel-2); }
+.nav-tab.active { background: var(--chrome-selected); }
+.account-btn:hover { background: var(--chrome-glass); border-color: var(--line-strong); }
+.topbar-arrow, .window-btn, .chip-btn, .chip a { color: var(--text); }
+.window-controls { border-radius: var(--radius-sm); }
+/* Preserve the subtitle's text position and layout footprint while extending
+   its readable backing slightly beyond the glyphs. */
+.brand-subtitle {
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  margin: -2px -4px -2px -3px;
+}
+.topbar-status > .chip:first-child {
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+
+.startup-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--repair-gap);
+  padding: var(--repair-gap);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--chrome-glass);
+  color: var(--text);
+  font-size: var(--repair-body);
+}
+.startup-message { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.startup-message span { color: var(--muted); }
+.startup-actions { display: flex; align-items: center; gap: var(--repair-gap); flex: none; }
+.startup-status button { white-space: nowrap; }
+.home-library-state {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: var(--repair-gap) 10px;
+  color: var(--text);
+  font-size: var(--repair-body);
+}
+.home-library-state p { color: var(--muted); font-size: var(--repair-small); line-height: 1.5; }
+.home-instance-list > .home-library-state { min-height: 100%; }
+.home-library-state .home-text-btn { align-self: flex-start; }
+.home-library:has(.home-library-empty) .home-instance-list { flex: none; min-height: 0; }
+.home-library-empty { flex: 1; padding-block: 4px; gap: 4px; }
+.home-library-empty .home-text-btn { align-self: flex-start; }
+.home-library-link { margin-top: auto; }
+
+/* Keep existing disclosure and chat behavior independent of the retired restyle. */
+.dc-filter-disclosure { min-width: 0; }
+.dc-filter-disclosure > summary, .friends-back { display: none; }
+.dc-filter-disclosure > summary { align-items: center; gap: 8px; padding: 8px 16px; color: var(--text); cursor: pointer; }
+
+@media (max-width: 760px) {
+  .dc-filter-disclosure > summary { display: flex; }
+  .friends-card { display: block; height: auto; min-height: 0; }
+  .friends-card .friends-chat { display: none; }
+  .friends-chat-open .friends-card .friends-side { display: none; }
+  .friends-chat-open .friends-card .friends-chat { display: flex; min-height: 360px; }
+  .friends-chat-open .friends-back { display: inline-flex; }
+  /* A local exposure grade, with full coverage beneath the caption and soft
+     edges outside it. Leave the image crop, text flow and logo backdrop intact. */
+  .home-intro > p { position: relative; isolation: isolate; }
+  .home-intro > p::before {
+    content: '';
+    position: absolute;
+    inset: -40px -8px;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--logo-dark);
+    opacity: .55;
+    mask-image: linear-gradient(to bottom, transparent, var(--logo-dark) 40px, var(--logo-dark) calc(100% - 40px), transparent), linear-gradient(to right, transparent, var(--logo-dark) 8px, var(--logo-dark) calc(100% - 8px), transparent);
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+  }
+  .startup-status { flex-wrap: wrap; }
+  .startup-actions { width: 100%; justify-content: space-between; }
+  .topbar:has(.topbar-arrow:not([hidden])) .nav-tabs { margin-left: var(--hit-target); width: calc(100% - var(--hit-target)); }
+  .home-state { white-space: normal; text-align: right; }
+  .home-launch-foot { align-items: flex-start; }
+}

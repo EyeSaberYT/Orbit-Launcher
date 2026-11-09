@@ -9,6 +9,7 @@ import {
   wasStopped,
 } from './actions.js';
 import { mountAccountMenu } from './components/account-menu.js';
+import { mountStartupStatus } from './components/startup-status.js';
 import { startFriends, totalUnread } from './friends.js';
 import { initDrop } from './drop.js';
 import { currentRoute, navigate, onNavigate, route, startRouter } from './router.js';
@@ -16,10 +17,14 @@ import { appendConsole, store } from './store.js';
 import { errorText, listen } from './tauri.js';
 import { $, $$, html, icon, initTooltips, raw, setHtml, spinner, toast } from './ui.js';
 import { startUpdateCheck } from './updater.js';
+import * as homePage from './pages/home.js';
+import { mountNavIndicator } from './motion.js';
 
 // ---------- Routes ----------
 
-route('/', () => import('./pages/home.js'));
+// Load the default view with bootstrap so its route cannot paint an empty sheet
+// while a separate dynamic module request is still pending.
+route('/', () => homePage);
 route('/library', () => import('./pages/library.js'));
 route('/instance/:id/:tab?', () => import('./pages/instance.js'));
 route('/discover/:type?', () => import('./pages/discover.js'));
@@ -41,9 +46,16 @@ const sectionOf = (path) => {
 /** The tabs: the current section lights up. */
 function mountNav() {
   const nav = $('#nav');
+  const moveIndicator = mountNavIndicator(nav);
   const highlight = (path) => {
     const section = sectionOf(path);
-    $$('.nav-tab', nav).forEach((tab) => tab.classList.toggle('active', tab.dataset.section === section));
+    $$('.nav-tab', nav).forEach((tab) => {
+      const active = tab.dataset.section === section;
+      tab.classList.toggle('active', active);
+      if (active) tab.setAttribute('aria-current', 'page');
+      else tab.removeAttribute('aria-current');
+    });
+    moveIndicator(nav.querySelector('.nav-tab.active'));
   };
   onNavigate(highlight);
   highlight(currentRoute().path);
@@ -186,6 +198,7 @@ function mountProgressFooter() {
     clearTimeout(hideTimer);
     if (!p) {
       footer.hidden = true;
+      delete footer.dataset.mode;
       return;
     }
     const hasBytes = p.total > 0;
@@ -200,17 +213,26 @@ function mountProgressFooter() {
 
     footer.hidden = false;
     footer.classList.toggle('is-done', Boolean(p.finished));
-    setHtml(
+    const displayValue = (p.finished ? 'Done' : percent !== null ? `${percent}%` : '')
+      + (!p.finished && (p.filesTotal ?? 0) > 1 ? ` · ${p.filesDone ?? 0}/${p.filesTotal} files` : '');
+    const mode = p.finished ? 'done' : percent === null ? 'indeterminate' : 'progress';
+    // Retain the fill element so frequent progress events animate its width
+    // instead of replacing the entire footer and restarting at every frame.
+    if (footer.dataset.mode === mode) {
+      footer.querySelector('[data-progress-label]').textContent = p.label;
+      footer.querySelector('[data-progress-value]').textContent = displayValue;
+      const fill = footer.querySelector('.progress-fill');
+      if (fill && percent !== null) fill.style.width = `${percent}%`;
+    } else {
+      footer.dataset.mode = mode;
+      setHtml(
       footer,
       html`
         ${p.finished ? html`<span style="color:var(--green)">${icon('check-circle')}</span>` : spinner()}
         <div class="grow">
           <div class="row-between">
-            <span class="label truncate">${p.label}</span>
-            <span class="small muted nowrap tabular">
-              ${p.finished ? 'Done' : percent !== null ? `${percent}%` : ''}
-              ${!p.finished && (p.filesTotal ?? 0) > 1 ? ` · ${p.filesDone ?? 0}/${p.filesTotal} files` : ''}
-            </span>
+            <span class="label truncate" data-progress-label>${p.label}</span>
+            <span class="small muted nowrap tabular" data-progress-value>${displayValue}</span>
           </div>
           ${!p.finished &&
           html`<div class="progress-track" style="margin-top:7px;height:6px">
@@ -218,7 +240,8 @@ function mountProgressFooter() {
           </div>`}
         </div>
         <button class="btn btn-ghost btn-icon btn-sm" data-dismiss aria-label="Dismiss">${icon('x')}</button>`,
-    );
+      );
+    }
     if (p.finished) hideTimer = setTimeout(() => store.set('progress', null), 4000);
   };
 
@@ -239,10 +262,17 @@ async function listenToBackend() {
     pending = progress;
     if (first) {
       requestAnimationFrame(() => {
-        store.set('progress', pending);
+        if (pending) store.set('progress', pending);
         pending = null;
       });
     }
+  });
+
+  // A long task failed before sending its `finished` snapshot: drop the stale progress
+  // (including one still queued for the next frame) instead of spinning forever.
+  window.addEventListener('orbit:task-failed', () => {
+    pending = null;
+    if (store.state.progress && !store.state.progress.finished) store.set('progress', null);
   });
 
   await listen('auth://device-code', (info) => store.set('deviceCode', info));
@@ -270,26 +300,44 @@ async function listenToBackend() {
 
 // ---------- Boot ----------
 
+let routerStarted = false;
+async function showLauncher() {
+  if (routerStarted) return;
+  routerStarted = true;
+  await startRouter();
+}
+const setBootStage = text => {
+  const label = $('[data-boot-stage]');
+  if (label) label.textContent = text;
+};
+
 async function boot() {
-  try {
-    await loadSettings();
-  } catch (error) {
-    toast("Couldn't load settings", { kind: 'error', description: errorText(error) });
-  }
+  mountStartupStatus($('#startup-status'));
   initTooltips();
   mountNav();
   mountTopBar();
   mountWindowControls();
   mountProgressFooter();
   initDrop();
-  await listenToBackend();
-  await Promise.all([refreshInstances(), refreshAccounts(), refreshRunning()]);
-  startRouter();
-  startUpdateCheck();
-  startFriends();
+  // Slow native requests must not trap someone behind the loading treatment.
+  // The mounted Play view continues to show honest loading states until they settle.
+  const fallback = setTimeout(() => void showLauncher().catch(console.error), 8000);
+  try {
+    setBootStage('Loading your preferences…');
+    try { await loadSettings(); } catch { /* The connection region owns recovery. */ }
+    setBootStage('Connecting your instances and account…');
+    await listenToBackend();
+    await Promise.all([refreshInstances(), refreshAccounts(), refreshRunning()]);
+    await showLauncher();
+    startUpdateCheck();
+    startFriends();
+  } finally {
+    clearTimeout(fallback);
+  }
 }
 
 boot().catch((error) => {
+  void showLauncher();
   console.error(error);
   toast('Orbit Launcher failed to start', { kind: 'error', description: errorText(error), duration: 0 });
 });
