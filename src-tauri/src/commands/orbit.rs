@@ -145,6 +145,16 @@ async fn ensure_fabric_api(app: &AppHandle, state: &State<'_, AppState>, instanc
     Ok(())
 }
 
+/// Whether Orbit Client's jar for this game version depends on Fabric API: the full client does
+/// (Minecraft 1.15 and newer), the cosmetics-only builds for 1.14 and older don't.
+pub fn needs_fabric_api(game_version: &str) -> bool {
+    let numbers: Vec<u64> = game_version
+        .split(['.', '-'])
+        .map_while(|part| part.chars().take_while(char::is_ascii_digit).collect::<String>().parse().ok())
+        .collect();
+    !matches!(numbers.as_slice(), [1, minor, ..] if *minor < 15)
+}
+
 /// Whether `mods` holds a jar whose name starts with `prefix`, enabled or disabled.
 fn has_mod_jar(mods: &std::path::Path, prefix: &str) -> bool {
     std::fs::read_dir(mods).is_ok_and(|entries| {
@@ -181,8 +191,12 @@ pub async fn prepare_other_launch(app: &AppHandle, state: &State<'_, AppState>, 
         if pick_asset(&release, &instance.game_version).is_none() {
             return Ok(());
         }
-        // Fabric API first: Orbit Client without it would crash the game.
-        ensure_fabric_api(app, state, &instance).await?;
+        // Fabric API first: Orbit Client without it would crash the game. (Its builds for 1.14 and
+        // older are the cosmetics-only client, which doesn't use Fabric API; there is none for
+        // Legacy Fabric versions anyway.)
+        if needs_fabric_api(&instance.game_version) {
+            ensure_fabric_api(app, state, &instance).await?;
+        }
         update_jar_from(app, state, id, &release).await.map(|_| ())
     }
     .await;
@@ -356,5 +370,20 @@ mod tests {
     #[test]
     fn the_jar_record_survives_project_id_cleanup() {
         assert!(PROJECT_ID.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
+    }
+}
+
+#[cfg(test)]
+mod fabric_api_tests {
+    use super::needs_fabric_api;
+
+    #[test]
+    fn only_the_full_client_needs_fabric_api() {
+        for game in ["1.8.9", "1.12.2", "1.13.2", "1.14", "1.14.4"] {
+            assert!(!needs_fabric_api(game), "{game}");
+        }
+        for game in ["1.15", "1.16.5", "1.21.11", "26.1", "26.3"] {
+            assert!(needs_fabric_api(game), "{game}");
+        }
     }
 }

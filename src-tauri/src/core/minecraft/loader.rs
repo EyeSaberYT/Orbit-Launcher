@@ -18,6 +18,9 @@ use crate::core::paths::{read_json, write_json, AppPaths};
 use crate::error::{LauncherError, Result};
 
 const FABRIC_META: &str = "https://meta.fabricmc.net/v2";
+/// Legacy Fabric: the same loader for Minecraft 1.13.2 and older, served by its own meta server
+/// (same API as Fabric's) with its own intermediary mappings.
+const LEGACY_FABRIC_META: &str = "https://meta.legacyfabric.net/v2";
 const QUILT_META: &str = "https://meta.quiltmc.org/v3";
 const FORGE_MAVEN: &str = "https://maven.minecraftforge.net";
 const NEOFORGE_MAVEN: &str = "https://maven.neoforged.net/releases";
@@ -60,7 +63,7 @@ pub async fn list_loader_versions(
     match kind {
         LoaderKind::Vanilla => Ok(vec![]),
         LoaderKind::Fabric => {
-            let url = format!("{FABRIC_META}/versions/loader/{}", urlencode(game_version));
+            let url = format!("{}/versions/loader/{}", fabric_meta(game_version), urlencode(game_version));
             let raw: Vec<FabricLoaderForGame> = get_json(http, &url).await?;
             Ok(raw
                 .into_iter()
@@ -114,6 +117,18 @@ pub async fn list_loader_versions(
             Ok(neoforge_builds(&extract_xml_tags(&xml, "version"), &prefix, game_version))
         }
     }
+}
+
+/// Whether a release is from before Minecraft 1.14 ("1.8.9", "1.13.2"). Snapshots and the
+/// year-numbered versions ("26.1") are not.
+pub fn is_before_1_14(game_version: &str) -> bool {
+    matches!(version_key(game_version).as_slice(), [1, minor, ..] if *minor < 14)
+}
+
+/// The meta server that has Fabric for a game version: Fabric's own from 1.14, Legacy Fabric's
+/// before. An instance stays a "Fabric" instance either way; only where the loader comes from differs.
+fn fabric_meta(game_version: &str) -> &'static str {
+    if is_before_1_14(game_version) { LEGACY_FABRIC_META } else { FABRIC_META }
 }
 
 /// Numbers of a version for ordering: "47.4.10" → [47, 4, 10], "21.1.0-beta" → [21, 1, 0].
@@ -291,7 +306,7 @@ pub async fn install_loader(
         LoaderKind::Vanilla => Ok(id),
         LoaderKind::Fabric | LoaderKind::Quilt => {
             let base = if kind == LoaderKind::Fabric {
-                FABRIC_META
+                fabric_meta(game_version)
             } else {
                 QUILT_META
             };
@@ -520,6 +535,27 @@ fn legacy_forge_profile(installer: &Path, libraries_dir: &Path) -> Result<Option
         libraries.retain(|library| library.get("clientreq").and_then(|v| v.as_bool()) != Some(false));
     }
     Ok(Some(serde_json::from_value(version_info)?))
+}
+
+#[cfg(test)]
+mod fabric_meta_tests {
+    use super::*;
+
+    #[test]
+    fn old_releases_use_legacy_fabric() {
+        for game in ["1.8.9", "1.12.2", "1.13.2", "1.7.10", "1.3.2"] {
+            assert!(is_before_1_14(game), "{game}");
+            assert_eq!(fabric_meta(game), LEGACY_FABRIC_META, "{game}");
+        }
+    }
+
+    #[test]
+    fn fabric_keeps_everything_it_supports() {
+        for game in ["1.14", "1.14.4", "1.16.5", "1.21.11", "26.1", "26.3", "24w14a", "1.21.5-pre1"] {
+            assert!(!is_before_1_14(game), "{game}");
+            assert_eq!(fabric_meta(game), FABRIC_META, "{game}");
+        }
+    }
 }
 
 #[cfg(test)]

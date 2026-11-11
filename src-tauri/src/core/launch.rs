@@ -961,7 +961,9 @@ mod performance_tests {
 
 /// Starts a real modded game in a scratch folder and watches it get to the title screen.
 /// Downloads the game (a few minutes). Run with ORBIT_LIVE_JAVA (Java 17+ for the installer),
-/// ORBIT_LIVE_LOADER (forge | neoforge), ORBIT_LIVE_GAME and ORBIT_LIVE_LOADER_VERSION:
+/// ORBIT_LIVE_LOADER (forge | neoforge | fabric), ORBIT_LIVE_GAME and ORBIT_LIVE_LOADER_VERSION;
+/// ORBIT_LIVE_MOD, if set, is a mod jar copied into the instance first, and ORBIT_LIVE_EXPECT a
+/// line the game's output must contain:
 /// `cargo test --lib live_loader_launch -- --ignored --nocapture`
 #[cfg(test)]
 mod live_launch_tests {
@@ -989,6 +991,14 @@ mod live_launch_tests {
 
         let mut instance = Instance::new("live", game.clone(), loader);
         instance.loader_version = Some(loader_version.clone());
+        if let Ok(jar) = std::env::var("ORBIT_LIVE_MOD") {
+            let mods = instance::game_dir(&paths, &instance).join("mods");
+            std::fs::create_dir_all(&mods).unwrap();
+            let name = std::path::Path::new(&jar).file_name().expect("a jar file").to_owned();
+            std::fs::copy(&jar, mods.join(name)).expect("copy the mod");
+        }
+        let expect = std::env::var("ORBIT_LIVE_EXPECT").ok();
+        let mut expected_seen = expect.is_none();
         // The game's Java: as the launcher picks it (downloading it if needed), unless forced.
         instance.settings.java_path = std::env::var("ORBIT_LIVE_GAME_JAVA").ok();
         let account = Account {
@@ -1038,6 +1048,10 @@ mod live_launch_tests {
                     if line.contains("Exception") || line.contains("Error") || line.contains("FATAL") || line.contains("Sound engine started") {
                         println!("| {}", line.chars().take(300).collect::<String>());
                     }
+                    if expect.as_deref().is_some_and(|e| line.contains(e)) {
+                        expected_seen = true;
+                        println!("| {}", line.chars().take(300).collect::<String>());
+                    }
                     last.push(line.clone());
                     if last.len() > 40 {
                         last.remove(0);
@@ -1065,6 +1079,7 @@ mod live_launch_tests {
             }
         }
         assert!(reached, "the game didn't reach the title screen");
+        assert!(expected_seen, "the game's output never contained {:?}", expect);
     }
 }
 
