@@ -90,6 +90,25 @@ pub fn silent_events() -> GameEventSink {
     Arc::new(|_| {})
 }
 
+/// The oldest Java that Orbit Client's jars run on (they are compiled for it on every game version).
+pub const ORBIT_CLIENT_MIN_JAVA: u32 = 17;
+
+/// The Java an instance needs: what the game asks for, raised to [`ORBIT_CLIENT_MIN_JAVA`] when
+/// it's a Fabric instance with an enabled Orbit Client jar in `mods`. A disabled jar
+/// (`.jar.disabled`) isn't loaded, so it changes nothing.
+pub fn required_java(game_required: u32, loader: instance::LoaderKind, mods: &Path) -> u32 {
+    if loader != instance::LoaderKind::Fabric || game_required >= ORBIT_CLIENT_MIN_JAVA {
+        return game_required;
+    }
+    let has_orbit_client = std::fs::read_dir(mods).is_ok_and(|entries| {
+        entries.flatten().any(|e| {
+            let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+            name.starts_with("orbit-client-") && name.ends_with(".jar")
+        })
+    });
+    if has_orbit_client { ORBIT_CLIENT_MIN_JAVA } else { game_required }
+}
+
 /// Run the full pipeline and start the game.
 pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
     let LaunchRequest {
@@ -126,13 +145,20 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
     .await?;
 
     // ---- 2. make sure Java is available ----------------------------------
-    let required = version
+    let game_required = version
         .java_version
         .as_ref()
         .map(|j| java::required_major(&j.component, j.major_version))
         .unwrap_or(8);
+    // Orbit Client is built for Java 17 on every game version, so an old version that would
+    // start on Java 8 (or 1.17 on Java 16) needs a newer Java once the mod is in its mods folder.
+    let required = required_java(game_required, instance.loader, &game_dir.join("mods"));
 
-    sink(Progress::new("java", format!("Looking for Java {required}…")));
+    if required > game_required {
+        sink(Progress::new("java", format!("Orbit Client needs Java {required} — looking for it…")));
+    } else {
+        sink(Progress::new("java", format!("Looking for Java {required}…")));
+    }
     let explicit = instance
         .settings
         .java_path
@@ -1039,5 +1065,61 @@ mod live_launch_tests {
             }
         }
         assert!(reached, "the game didn't reach the title screen");
+    }
+}
+
+#[cfg(test)]
+mod orbit_java_tests {
+    use super::{required_java, ORBIT_CLIENT_MIN_JAVA};
+    use crate::core::instance::LoaderKind;
+
+    fn mods_with(files: &[&str]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "orbit-java-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in files {
+            std::fs::write(dir.join(f), b"").unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn old_fabric_instance_with_orbit_client_needs_java_17() {
+        let mods = mods_with(&["fabric-api-0.42.0+1.16.jar", "orbit-client-1.1.2+1.16.5.jar"]);
+        assert_eq!(required_java(8, LoaderKind::Fabric, &mods), ORBIT_CLIENT_MIN_JAVA);
+        // 1.17 asks for Java 16, which is still too old for the mod.
+        assert_eq!(required_java(16, LoaderKind::Fabric, &mods), ORBIT_CLIENT_MIN_JAVA);
+        std::fs::remove_dir_all(mods).ok();
+    }
+
+    #[test]
+    fn without_the_mod_the_game_decides() {
+        let mods = mods_with(&["fabric-api-0.42.0+1.16.jar"]);
+        assert_eq!(required_java(8, LoaderKind::Fabric, &mods), 8);
+        std::fs::remove_dir_all(mods).ok();
+        // No mods folder at all.
+        assert_eq!(required_java(8, LoaderKind::Fabric, std::path::Path::new("does/not/exist")), 8);
+    }
+
+    #[test]
+    fn a_disabled_jar_or_another_loader_changes_nothing() {
+        let disabled = mods_with(&["orbit-client-1.1.2+1.16.5.jar.disabled"]);
+        assert_eq!(required_java(8, LoaderKind::Fabric, &disabled), 8);
+        std::fs::remove_dir_all(disabled).ok();
+        // Legacy Forge needs exactly Java 8 (LaunchWrapper): a stray jar must not move it.
+        let forge = mods_with(&["orbit-client-1.1.2+1.16.5.jar"]);
+        assert_eq!(required_java(8, LoaderKind::Forge, &forge), 8);
+        std::fs::remove_dir_all(forge).ok();
+    }
+
+    #[test]
+    fn newer_games_keep_their_own_java() {
+        let mods = mods_with(&["orbit-client-1.1.2+1.21.11.jar"]);
+        assert_eq!(required_java(21, LoaderKind::Fabric, &mods), 21);
+        assert_eq!(required_java(25, LoaderKind::Fabric, &mods), 25);
+        std::fs::remove_dir_all(mods).ok();
     }
 }
