@@ -53,6 +53,9 @@ export function mountContent(pane, ctx) {
   const applying = new Set();
   /** Paths with a toggle or delete in flight. */
   const pending = new Set();
+  /** Performance mods are published for Fabric and Quilt; other instances don't get the button. */
+  const offersPerformance = ['fabric', 'quilt'].includes(ctx.instance?.loader);
+  let addingPerformance = false;
 
   setHtml(
     pane,
@@ -69,6 +72,7 @@ export function mountContent(pane, ctx) {
           </div>
           <div class="row-wrap" style="gap:8px">
             <button class="btn btn-ghost btn-icon btn-sm" data-refresh title="Reload">${icon('refresh', 'icon-sm')}</button>
+            ${offersPerformance && html`<button class="btn btn-outline btn-sm" data-performance title="Add well-known mods that make Minecraft run faster">${icon('zap', 'icon-sm')} Performance mods</button>`}
             <button class="btn btn-outline btn-sm" data-add>${icon('plus', 'icon-sm')} Add files</button>
             <button class="btn btn-primary btn-sm" data-browse>${icon('compass', 'icon-sm')} <span data-browse-label>Browse mods</span></button>
           </div>
@@ -309,6 +313,74 @@ export function mountContent(pane, ctx) {
     checkUpdates();
   }
 
+  /** Names in a sentence: "Sodium, Lithium and FerriteCore". */
+  const listNames = (mods) => {
+    const names = mods.map((m) => m.title);
+    return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] ?? '';
+  };
+
+  /**
+   * Performance mods: say what this instance can get, ask, then add them. Only versions published for
+   * this game version and loader are offered, so an old version may get fewer, or none.
+   */
+  async function addPerformanceMods() {
+    if (addingPerformance) return;
+    const button = pane.querySelector('[data-performance]');
+    addingPerformance = true;
+    if (button) button.disabled = true;
+    try {
+      const mods = await api.performance.status(id);
+      if (!ctx.alive()) return;
+      const available = mods.filter((m) => m.state === 'available');
+      const installed = mods.filter((m) => m.state === 'installed');
+      const unavailable = mods.filter((m) => m.state === 'unavailable');
+      const game = ctx.instance?.gameVersion ?? 'this version';
+      if (!available.length) {
+        toast(installed.length ? 'Nothing to add' : `No performance mods for Minecraft ${game}`, {
+          kind: 'info',
+          description: installed.length
+            ? `This instance already has ${listNames(installed)}.${unavailable.length ? ` ${listNames(unavailable)} ${unavailable.length > 1 ? "aren't" : "isn't"} published for Minecraft ${game}.` : ''}`
+            : 'None of them is published for this version and loader.',
+        });
+        return;
+      }
+      const ok = await confirmDialog({
+        title: 'Add performance mods?',
+        message: 'These free mods from Modrinth make Minecraft itself run faster. They are added to this instance only, and you can turn any of them off or delete it here afterwards.',
+        details: html`${available.map((m) => html`<div><strong>${m.title}</strong> — ${m.summary}</div>`)}
+          ${installed.length > 0 && html`<div class="faint" style="margin-top:6px">Already here: ${listNames(installed)}.</div>`}
+          ${unavailable.length > 0 && html`<div class="faint" style="margin-top:6px">Not published for Minecraft ${game}: ${listNames(unavailable)}.</div>`}`,
+        confirmLabel: `Add ${plural(available.length, 'mod')}`,
+      });
+      if (!ok || !ctx.alive()) return;
+      const toastId = toast(`Adding ${plural(available.length, 'mod')}…`, { kind: 'loading' });
+      try {
+        const result = await api.performance.install(id);
+        const added = result.filter((m) => m.state === 'added');
+        const failed = result.filter((m) => m.state === 'failed');
+        if (failed.length) {
+          toast(added.length ? `Added ${listNames(added)}` : "Couldn't add the performance mods", {
+            kind: added.length ? 'warn' : 'error',
+            id: toastId,
+            description: `Couldn't add ${listNames(failed)}: ${failed[0].detail ?? 'unknown error'}`,
+          });
+        } else {
+          toast(`Added ${listNames(added)}`, { kind: 'success', id: toastId, description: 'They load the next time this instance starts.' });
+        }
+      } catch (error) {
+        toast("Couldn't add the performance mods", { kind: 'error', id: toastId, description: errorText(error) });
+      }
+      refreshInstances();
+      if (ctx.alive()) loadContent({ quiet: true });
+    } catch (error) {
+      // Modrinth couldn't be asked: say so, don't pretend there is nothing to add.
+      toastError(error, "Couldn't check the performance mods");
+    } finally {
+      addingPerformance = false;
+      if (button?.isConnected) button.disabled = false;
+    }
+  }
+
   async function importPaths(paths) {
     const files = paths.filter(isContentFile);
     if (!files.length) {
@@ -387,6 +459,7 @@ export function mountContent(pane, ctx) {
       return drawList();
     }
     if (t.closest('[data-refresh]')) return loadContent();
+    if (t.closest('[data-performance]')) return addPerformanceMods();
     if (t.closest('[data-browse]')) {
       return navigate(`/discover/${DISCOVER[filter] ?? 'mod'}?instance=${encodeURIComponent(id)}`);
     }

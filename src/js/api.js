@@ -21,7 +21,7 @@ import { invoke as call } from './tauri.js';
 const TRACKED = new Set([
   'launch_instance', 'instance_create', 'instance_install_loader', 'modrinth_install',
   'modrinth_install_modpack', 'modrinth_apply_update', 'modrinth_update_all', 'modpack_import',
-  'import_instances', 'orbit_client_install', 'java_install',
+  'import_instances', 'orbit_client_install', 'java_install', 'performance_mods_install',
 ]);
 function invoke(command, args) {
   const result = call(command, args);
@@ -140,6 +140,16 @@ export const orbit = {
   status: () => invoke('orbit_client_status'),
   /** Creates or repairs the Orbit Client instance (Fabric, Fabric API, newest jar). Resolves with the Instance. */
   install: () => invoke('orbit_client_install'),
+};
+
+/**
+ * Performance mods for one instance: PerformanceMod[] { projectId, title, summary,
+ * state: 'installed' | 'available' | 'unavailable' | 'added' | 'failed', versionName, detail }.
+ * Empty for loaders they aren't offered to.
+ */
+export const performance = {
+  status: (instanceId) => invoke('performance_mods_status', { instanceId }),
+  install: (instanceId) => invoke('performance_mods_install', { instanceId }),
 };
 
 export const modrinth = {

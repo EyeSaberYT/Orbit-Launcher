@@ -143,6 +143,8 @@ pub fn run() {
             // ---- orbit client ------------------------------------------------
             commands::orbit::orbit_client_status,
             commands::orbit::orbit_client_install,
+            commands::performance::performance_mods_status,
+            commands::performance::performance_mods_install,
             // ---- multiplayer server list -----------------------------------
             commands::servers::servers_list,
             commands::servers::servers_save,
