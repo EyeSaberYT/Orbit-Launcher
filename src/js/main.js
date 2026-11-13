@@ -17,6 +17,7 @@ import { appendConsole, store } from './store.js';
 import { errorText, listen } from './tauri.js';
 import { $, $$, html, icon, initTooltips, raw, setHtml, spinner, toast } from './ui.js';
 import { startUpdateCheck } from './updater.js';
+import { startOrbitClientUpdates } from './orbit-updates.js';
 import * as homePage from './pages/home.js';
 import { mountNavIndicator } from './motion.js';
 
@@ -330,6 +331,7 @@ async function boot() {
     await Promise.all([refreshInstances(), refreshAccounts(), refreshRunning()]);
     await showLauncher();
     startUpdateCheck();
+    startOrbitClientUpdates();
     startFriends();
   } finally {
     clearTimeout(fallback);

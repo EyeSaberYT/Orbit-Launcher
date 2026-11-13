@@ -21,7 +21,7 @@ import { invoke as call } from './tauri.js';
 const TRACKED = new Set([
   'launch_instance', 'instance_create', 'instance_install_loader', 'modrinth_install',
   'modrinth_install_modpack', 'modrinth_apply_update', 'modrinth_update_all', 'modpack_import',
-  'import_instances', 'orbit_client_install', 'java_install', 'performance_mods_install',
+  'import_instances', 'orbit_client_install', 'orbit_client_update_all', 'java_install', 'performance_mods_install',
 ]);
 function invoke(command, args) {
   const result = call(command, args);
@@ -140,6 +140,11 @@ export const orbit = {
   status: () => invoke('orbit_client_status'),
   /** Creates or repairs the Orbit Client instance (Fabric, Fabric API, newest jar). Resolves with the Instance. */
   install: () => invoke('orbit_client_install'),
+  /**
+   * Gives every instance that has Orbit Client the newest release's jar (running ones are skipped).
+   * Resolves with null when no instance has it, else { version, updated: instance names, failed: count }.
+   */
+  updateAll: () => invoke('orbit_client_update_all'),
 };
 
 /**

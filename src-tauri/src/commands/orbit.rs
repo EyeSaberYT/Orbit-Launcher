@@ -4,6 +4,9 @@
 //! [`GAME_VERSION`], Fabric API from Modrinth) or repairs what's missing, and
 //! every launch of it first swaps in the newest Orbit Client jar from the
 //! GitHub releases of `EyeSaberYT/OrbitClient`. Offline, it plays the jar it has.
+//!
+//! While the launcher is open it also looks for a new release by itself
+//! ([`orbit_client_update_all`]) and updates every instance that has the mod.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -222,6 +225,61 @@ pub async fn prepare_launch(app: &AppHandle, state: &State<'_, AppState>, id: &s
     Ok(())
 }
 
+/// What an automatic update did.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrbitUpdates {
+    /// The newest release's tag, e.g. `v1.1.4`.
+    pub version: String,
+    /// The names of the instances whose jar was replaced with that release's.
+    pub updated: Vec<String>,
+    /// How many instances were due an update that failed (they update at their next launch).
+    pub failed: usize,
+}
+
+/// Whether an instance should get `release`'s jar without being asked: it has Orbit Client from an
+/// older release, the jar is still there and enabled (one the player removed or disabled is left
+/// alone), and the release has a jar for its Minecraft version.
+fn due_for_update(instance: &Instance, mods: &std::path::Path, release: &Release) -> bool {
+    let Some(current) = installed_version(instance) else { return false };
+    current.version_id != release.tag_name
+        && current.files.iter().any(|file| is_safe_filename(file) && mods.join(file).is_file())
+        && pick_asset(release, &instance.game_version).is_some()
+}
+
+/// Look for a new Orbit Client release and give it to every instance that has the mod, so the
+/// update is already there at the next launch. Called by the launcher while it is open. A running
+/// instance is skipped: the game holds its jars open, and it updates when it next starts.
+/// Fails only when GitHub can't be asked; needs no network when no instance has the mod.
+#[tauri::command]
+pub async fn orbit_client_update_all(app: AppHandle, state: State<'_, AppState>) -> Result<Option<OrbitUpdates>> {
+    let tracked: Vec<Instance> =
+        state.instances.read().await.instances.iter().filter(|i| installed_version(i).is_some()).cloned().collect();
+    if tracked.is_empty() {
+        return Ok(None);
+    }
+    let release = latest_release(&state).await?;
+    let mut updates = OrbitUpdates { version: release.tag_name.clone(), updated: Vec::new(), failed: 0 };
+    for instance in tracked {
+        let mods = game_dir(&state.paths, &instance).join("mods");
+        if !due_for_update(&instance, &mods, &release) || state.is_running(&instance.id).await {
+            continue;
+        }
+        match update_jar_from(&app, &state, &instance.id, &release).await {
+            Ok(Some(_)) => updates.updated.push(instance.name.clone()),
+            Ok(None) => {}
+            Err(error) => {
+                updates.failed += 1;
+                log::warn!("orbit client: automatic update of instance {} failed: {error}", instance.id);
+            }
+        }
+    }
+    Ok(Some(updates))
+}
+
+/// One update at a time: a launch and the automatic check may reach the same instance together.
+static UPDATING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Download the newest Orbit Client jar if it isn't the one installed. Returns
 /// the new version, or `None` when it was already current.
 pub async fn update_jar(app: &AppHandle, state: &AppState, id: &str) -> Result<Option<String>> {
@@ -230,6 +288,7 @@ pub async fn update_jar(app: &AppHandle, state: &AppState, id: &str) -> Result<O
 }
 
 async fn update_jar_from(app: &AppHandle, state: &AppState, id: &str, release: &Release) -> Result<Option<String>> {
+    let _one_at_a_time = UPDATING.lock().await;
     let instance = state.instances.read().await.get(id)?.clone();
     let asset = pick_asset(release, &instance.game_version).ok_or_else(|| {
         LauncherError::msg(format!("The latest Orbit Client release has no jar for Minecraft {}.", instance.game_version))
@@ -296,6 +355,47 @@ mod tests {
 
     fn asset(name: &str) -> Asset {
         Asset { name: name.into(), browser_download_url: format!("https://example.invalid/{name}"), size: 1, digest: None }
+    }
+
+    fn instance_with(version: &str, file: &str) -> Instance {
+        let mut instance = Instance::new("test", "26.3".to_string(), LoaderKind::Fabric);
+        instance.installed_projects.push(InstalledProject {
+            project_id: PROJECT_ID.into(),
+            version_id: version.into(),
+            title: "Orbit Client".into(),
+            icon_url: None,
+            project_type: "mod".into(),
+            files: vec![file.into()],
+            installed_at: None,
+        });
+        instance
+    }
+
+    /// The automatic update only replaces a jar that is there and enabled, from an older release.
+    #[test]
+    fn automatic_update_only_where_the_mod_is_installed_and_older() {
+        let mods = std::env::temp_dir().join(format!("orbit-auto-update-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&mods);
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join("orbit-client-1.1.3+26.3.jar"), b"jar").unwrap();
+        let release = Release { tag_name: "v1.1.4".into(), assets: vec![asset("orbit-client-1.1.4+26.3.jar"), asset("orbit-client-1.1.4+1.21.11.jar")] };
+
+        let older = instance_with("v1.1.3", "orbit-client-1.1.3+26.3.jar");
+        assert!(due_for_update(&older, &mods, &release), "an older jar that is there is updated");
+        assert!(!due_for_update(&instance_with("v1.1.4", "orbit-client-1.1.3+26.3.jar"), &mods, &release), "already on this release");
+        assert!(!due_for_update(&instance_with("v1.1.3", "orbit-client-1.1.2+26.3.jar"), &mods, &release), "the jar was deleted");
+        assert!(!due_for_update(&Instance::new("test", "26.3".to_string(), LoaderKind::Fabric), &mods, &release), "never had the mod");
+
+        // Disabled by the player: the tracked file is gone, a .disabled one is there.
+        std::fs::rename(mods.join("orbit-client-1.1.3+26.3.jar"), mods.join("orbit-client-1.1.3+26.3.jar.disabled")).unwrap();
+        assert!(!due_for_update(&older, &mods, &release), "a disabled jar stays as it is");
+
+        // No jar for this Minecraft version in the new release.
+        std::fs::write(mods.join("orbit-client-1.1.3+1.19.jar"), b"jar").unwrap();
+        let mut other = instance_with("v1.1.3", "orbit-client-1.1.3+1.19.jar");
+        other.game_version = "1.19".into();
+        assert!(!due_for_update(&other, &mods, &release), "the release has nothing for 1.19");
+        let _ = std::fs::remove_dir_all(&mods);
     }
 
     /// Releases carry the mod jar and possibly its sources jar; only the mod jar may be installed.
