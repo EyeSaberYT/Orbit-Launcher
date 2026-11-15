@@ -2,8 +2,8 @@
 # GitHub Release. The Tauri CLI generates `latest.json` (the manifest the
 # in-app updater polls) and signs every bundle with TAURI_SIGNING_PRIVATE_KEY.
 #
-# Releasing: bump the version in package.json, src-tauri/Cargo.toml and
-# src-tauri/tauri.conf.json, then push a tag:
+# Releasing: write the version's notes in CHANGELOG.md, bump the version in
+# package.json, src-tauri/Cargo.toml and src-tauri/tauri.conf.json, then push a tag:
 #
 #   git tag v0.2.0 && git push origin v0.2.0
 #
@@ -66,6 +66,19 @@ jobs:
       - name: Install the Tauri CLI
         run: npm ci
 
+      # The release page shows this version's section of CHANGELOG.md ("## v0.6.5" up to the
+      # next "## "). A tag without one stops here, so no release goes out without notes.
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          notes=$(awk -v tag="## ${GITHUB_REF_NAME}" '{ sub(/\r$/, "") } $0 == tag { on = 1; next } on && /^## / { exit } on' CHANGELOG.md | sed -e '/./,$!d')
+          if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+            echo "::error::CHANGELOG.md has no notes under '## ${GITHUB_REF_NAME}'. Add them and tag again."
+            exit 1
+          fi
+          { echo 'body<<ORBIT_NOTES_END'; printf '%s\n' "$notes"; echo 'ORBIT_NOTES_END'; } >> "$GITHUB_OUTPUT"
+
       - name: Build and publish
         uses: tauri-apps/tauri-action@v1
         env:
@@ -81,6 +94,8 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Orbit Launcher ${{ github.ref_name }}
           releaseBody: |
+            ${{ steps.notes.outputs.body }}
+
             **Install**
             - **Windows:** `Orbit Launcher_*_x64-setup.exe` (or the `.msi`).
             - **Linux:** `Orbit Launcher_*_amd64.AppImage` (`chmod +x` and run), or the `.deb` / `.rpm`.
