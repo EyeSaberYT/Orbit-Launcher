@@ -181,13 +181,22 @@ body:has(#progress-footer:not([hidden])) .toasts { bottom: 108px; }
 .view > .page:has(> .friends-card) { height: 100%; }
 .page > .friends-card { flex: 1 1 auto; height: auto; min-height: 380px; }
 /* With a game running, Stop and Logs are what the live chip is for: they never shrink.
-   The instance name truncates first; on narrower windows the name, the "+N" link and
-   the account name (the avatar and its aria-label stay) step aside for them. */
+   The instance name and the account name shorten (with an ellipsis) as the window narrows,
+   and the brand, the tabs and the window buttons never give way. Only on narrow windows do
+   the "+N" link and the account name (the avatar and its aria-label stay) step aside; the
+   instance name stays while it fits. Hiding the names earlier left a row of bare icons with
+   half the bar empty. */
 .topbar-status .chip.is-live { min-width: 0; flex: 0 1 auto; }
-.chip.is-live > a:not(.faint) { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.chip.is-live > a:not(.faint) { display: block; align-self: center; min-height: 0; min-width: 0; flex: 0 1 auto; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+/* While a game runs, the "Online" chip makes room for the names before they shorten. */
+@media (max-width: 1400px) { .topbar-status:has(.is-live) > .chip:not(.is-live) { display: none; } }
 .chip.is-live > :not(a:not(.faint)) { flex: none; }
-@media (max-width: 1400px) {
-  .chip.is-live > a, .chip.is-live > .faint { display: none; }
+.topbar-brand, .topbar-arrows, .nav-tabs, .window-controls { flex: none; }
+#account-box { flex: 0 1 auto; min-width: 0; }
+#account-box .account-btn { max-width: 100%; }
+#account-box .account-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1050px) {
+  .chip.is-live > .faint { display: none; }
   .topbar-status:has(.is-live) + #account-box .account-btn > span { display: none; }
   .topbar-status:has(.is-live) + #account-box .account-btn { padding: 4px; }
 }
