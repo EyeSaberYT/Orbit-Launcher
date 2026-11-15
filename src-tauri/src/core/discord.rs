@@ -17,7 +17,7 @@ use super::instance::{Instance, LoaderKind, QuickPlay};
 const RETRY_EVERY: Duration = Duration::from_secs(15);
 /// Asset key of the logo uploaded under Rich Presence → Art Assets in the
 /// Discord application.
-const LARGE_IMAGE: &str = "orbit-client";
+const LARGE_IMAGE: &str = "orbit-new";
 /// The two buttons under the presence (Discord allows at most two). Only other
 /// people see them; Discord hides them on your own profile.
 const BUTTONS: [(&str, &str); 2] = [
