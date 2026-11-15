@@ -153,7 +153,7 @@ async function checkNews() {
   await waitFor('document.querySelector(".home-news-list")?.getAttribute("aria-busy")==="false"');
   assert.equal(await evaluate('document.querySelectorAll(".home-news-story").length'), 3, 'Representative GitHub response renders three posts');
   assert.equal(await evaluate(`Promise.all([...document.querySelectorAll('.home-news-story img')].map(i=>i.decode())).then(()=>true)`), true, 'Any supplied Orbit cover images decode');
-  assert.equal(await evaluate(`document.querySelector('#home-news-heading').textContent==='Orbit news'&&[...document.querySelectorAll('.home-news-story,.home-news-more')].every(a=>a.href.startsWith('https://github.com/EyeSaberYT/Orbit-Launcher/releases'))`),true,'Only Orbit posts and links are shown');
+  assert.equal(await evaluate(`document.querySelector('#home-news-heading').textContent==='Orbit news'&&[...document.querySelectorAll('.home-news-story,.home-news-more')].every(a=>a.href.startsWith('https://github.com/MineArcadeStudio/Orbit-Launcher/releases'))`),true,'Only Orbit posts and links are shown');
   const sizes = [[1919, 947], [1440, 900], [1240, 780], [820, 1180], [390, 844]];
   for (const [width, height] of sizes) {
     await evaluate('document.querySelector("#view").scrollTop=0');
@@ -368,7 +368,7 @@ try {
   await checkBootMotion();
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
     const original=window.fetch;
-    window.fetch=(input,options)=>String(input).startsWith('https://api.github.com/repos/EyeSaberYT/Orbit-Launcher/releases')
+    window.fetch=(input,options)=>String(input).startsWith('https://api.github.com/repos/MineArcadeStudio/Orbit-Launcher/releases')
       ?Promise.resolve(new Response(JSON.stringify(${JSON.stringify(representativeNews)}),{status:200,headers:{'Content-Type':'application/json'}}))
       :original(input,options);
     document.addEventListener('DOMContentLoaded',()=>{
@@ -453,7 +453,7 @@ try {
   await waitFor('window.__checks.opened.length===1');
   assert.equal(await evaluate('window.__checks.opened[0]===document.querySelector(".home-news-story").href'), true, 'Keyboard article activation uses native browser opener');
   await evaluate('document.querySelector(".home-news-more").click()');
-  assert.equal(await evaluate('window.__checks.opened[1]'), 'https://github.com/EyeSaberYT/Orbit-Launcher/releases', 'All updates opens Orbit GitHub releases');
+  assert.equal(await evaluate('window.__checks.opened[1]'), 'https://github.com/MineArcadeStudio/Orbit-Launcher/releases', 'All updates opens Orbit GitHub releases');
   assert.equal(await evaluate('document.querySelector("#home-library-heading span").textContent'), '0');
   assert.equal(await evaluate('document.querySelector("[data-launch]").textContent.includes("Install & play")'), true);
   assert.equal(await evaluate('!!document.querySelector(".home-library-empty")'), true);

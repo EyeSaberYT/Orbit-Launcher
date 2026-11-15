@@ -10,7 +10,7 @@ import { checkForUpdates, installUpdate, relaunchApp } from '../updater.js';
 import { animateSurface } from '../motion.js';
 
 const JAVA_MAJORS = [8, 16, 17, 21, 25];
-const RELEASES_URL = 'https://github.com/EyeSaberYT/Orbit-Launcher/releases/latest';
+const RELEASES_URL = 'https://github.com/MineArcadeStudio/Orbit-Launcher/releases/latest';
 const DEFAULT_SERVER = 'farms.minearcade.org';
 
 const PANELS = [

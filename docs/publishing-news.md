@@ -1,13 +1,13 @@
 # Publishing Orbit news
 
 The Play screen reads public GitHub Releases from
-[EyeSaberYT/Orbit-Launcher](https://github.com/EyeSaberYT/Orbit-Launcher/releases).
+[MineArcadeStudio/Orbit-Launcher](https://github.com/MineArcadeStudio/Orbit-Launcher/releases).
 There is no Minecraft news source, server to maintain, or embedded GitHub token.
 The repository is configured once in `src/js/news.js` as `NEWS_REPOSITORY`.
 
 ## Post an announcement without shipping an app
 
-1. Open [New release](https://github.com/EyeSaberYT/Orbit-Launcher/releases/new).
+1. Open [New release](https://github.com/MineArcadeStudio/Orbit-Launcher/releases/new).
 2. Create a unique tag starting with `news-`, for example `news-2026-11-07`.
    Target the default branch. Use an announcement title as the release title.
 3. Write a short opening paragraph followed by the full announcement in Markdown.

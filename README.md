@@ -100,7 +100,7 @@ Updates are signed. The private key lives **outside the repo** at
 `%USERPROFILE%\.tauri\minearcade.key` (the file kept its name from before the rename); its public half
 is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`).
 
-1. Create the GitHub repository the updater checks (`EyeSaberYT/Orbit-Launcher`, as set in
+1. Create the GitHub repository the updater checks (`MineArcadeStudio/Orbit-Launcher`, as set in
    `plugins.updater.endpoints`; change it there if you use another name).
 2. Add the repository secrets `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents) and
    `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty).

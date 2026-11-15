@@ -4,7 +4,7 @@ export const representativeNews = [
   { name:'Orbit Launcher v0.5.10', tag_name:'v0.5.10', published_at:'2026-11-05T16:14:56Z' },
   { name:'Orbit Launcher v0.5.9', tag_name:'v0.5.9', published_at:'2026-11-04T21:08:16Z' },
 ].map(post => ({ ...post, draft:false, prerelease:false, assets:[],
-  html_url:`https://github.com/EyeSaberYT/Orbit-Launcher/releases/tag/${post.tag_name}`,
+  html_url:`https://github.com/MineArcadeStudio/Orbit-Launcher/releases/tag/${post.tag_name}`,
   body:'Release notes and downloads for this Orbit Launcher version.',
 }));
 console.assert(representativeNews.length===3,'Three representative news posts');

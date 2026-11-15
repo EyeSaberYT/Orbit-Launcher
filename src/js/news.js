@@ -1,6 +1,6 @@
 // Publish Orbit announcements and release notes through this public repository.
 // See docs/publishing-news.md. No GitHub token belongs in the launcher.
-export const NEWS_REPOSITORY = 'EyeSaberYT/Orbit-Launcher';
+export const NEWS_REPOSITORY = 'MineArcadeStudio/Orbit-Launcher';
 export const NEWS_URL = `https://github.com/${NEWS_REPOSITORY}/releases`;
 export const NEWS_ENDPOINT = `https://api.github.com/repos/${NEWS_REPOSITORY}/releases?per_page=20`;
 const CACHE_KEY = `orbit.github-news.${NEWS_REPOSITORY}.v1`;

@@ -3,7 +3,7 @@
 //! One instance carries the [`TAG`] tag. Installing creates it (Fabric on
 //! [`GAME_VERSION`], Fabric API from Modrinth) or repairs what's missing, and
 //! every launch of it first swaps in the newest Orbit Client jar from the
-//! GitHub releases of `EyeSaberYT/OrbitClient`. Offline, it plays the jar it has.
+//! GitHub releases of `MineArcadeStudio/OrbitClient`. Offline, it plays the jar it has.
 //!
 //! While the launcher is open it also looks for a new release by itself
 //! ([`orbit_client_update_all`]) and updates every instance that has the mod.
@@ -30,7 +30,7 @@ pub const GAME_VERSION: &str = "1.21.11";
 /// update checks skip it, and launches update it instead.
 pub const PROJECT_ID: &str = "orbit-client";
 const FABRIC_API: &str = "P7dR8mSH";
-const LATEST_RELEASE: &str = "https://api.github.com/repos/EyeSaberYT/OrbitClient/releases/latest";
+const LATEST_RELEASE: &str = "https://api.github.com/repos/MineArcadeStudio/OrbitClient/releases/latest";
 /// The Orbit icon the launcher ships with, which is also the mod's icon.
 const ICON: &[u8] = include_bytes!("../../icons/128x128.png");
 

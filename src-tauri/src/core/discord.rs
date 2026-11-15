@@ -22,7 +22,7 @@ const LARGE_IMAGE: &str = "orbit-new";
 /// people see them; Discord hides them on your own profile.
 const BUTTONS: [(&str, &str); 2] = [
     ("Join Discord", "https://discord.gg/zGPCUGE2UF"),
-    ("Get Orbit Launcher", "https://github.com/EyeSaberYT/Orbit-Launcher/releases/latest"),
+    ("Get Orbit Launcher", "https://github.com/MineArcadeStudio/Orbit-Launcher/releases/latest"),
 ];
 
 /// The launcher's application on the Discord Developer Portal (IDs are

@@ -18,7 +18,7 @@ use tauri::Manager;
 use crate::core::paths::AppPaths;
 
 /// Sent on every HTTP request so Modrinth/Mojang can identify the launcher.
-pub const USER_AGENT: &str = concat!("OrbitLauncher/", env!("CARGO_PKG_VERSION"), " (+https://github.com/EyeSaberYT/Orbit-Launcher)");
+pub const USER_AGENT: &str = concat!("OrbitLauncher/", env!("CARGO_PKG_VERSION"), " (+https://github.com/MineArcadeStudio/Orbit-Launcher)");
 
 /// Entry point used by both `main.rs` and mobile targets.
 pub fn run() {
