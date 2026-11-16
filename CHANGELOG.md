@@ -4,6 +4,18 @@ What changed in each Orbit Launcher release. The release build copies the sectio
 version onto the GitHub release page (and the Discord announcement), so write it for players:
 what they will notice, then what was fixed. A release without a section here does not build.
 
+## v0.6.6
+
+**Security fix for friends. Please update.**
+
+- **Fixed: someone on your network could log into Minecraft servers as you.** The friends feature
+  signed in to Orbit's server over plain HTTP and signed whatever "challenge" it received with
+  Mojang. Someone on the same Wi-Fi, or anyone who could fake the server, could hand over a real
+  server's login value and join that server (for example Hypixel) under your name. The launcher now
+  mixes a random number of its own into what it signs, so the value can't match any other server.
+- **Friends now use HTTPS** (`orbit-social.minearcade.org`). Friend lists, messages and your friends
+  sign-in can no longer be read or changed by anyone between you and the server.
+
 ## v0.6.5
 
 **Orbit Launcher has a new home: [MineArcadeStudio/Orbit-Launcher](https://github.com/MineArcadeStudio/Orbit-Launcher).**

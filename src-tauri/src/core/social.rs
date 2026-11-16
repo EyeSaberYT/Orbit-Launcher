@@ -1,45 +1,37 @@
 //! Friends, through Orbit Client's cosmetics server (the same server and sign-in Orbit Client
 //! uses, so friends, requests and messages are shared between the launcher and the game).
 //!
-//! The server is found through DNS, like Orbit Client does: an SRV record gives its host and port.
-//! Signing in works like joining a Minecraft server: a one-time challenge, Mojang's `join` with the
-//! account's token, then the server checks it with Mojang and hands out its own token. No Microsoft
-//! token ever reaches the friends server.
+//! The server is reached over HTTPS only, at [`SERVER`] (Cloudflare in front of it). Signing in works
+//! like joining a Minecraft server: a one-time challenge, Mojang's `join` with the account's token,
+//! then the server checks it with Mojang and hands out its own token. No Microsoft token ever
+//! reaches the friends server.
+//!
+//! What is signed with Mojang is never the server's challenge as given: see [`sign_in_id`].
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value;
+use sha1::{Digest, Sha1};
 use tokio::sync::Mutex;
 
 use super::auth::Account;
 use crate::error::{LauncherError, Result};
 
-const SRV_NAME: &str = "_eclipse-cosmetics._tcp.minearcade.org";
-const RESOLVE_EVERY: Duration = Duration::from_secs(30 * 60);
+/// The friends and cosmetics server. HTTPS only: over plain HTTP anyone on the player's network
+/// could read the messages and the sign-in, or change the challenge.
+const SERVER: &str = "https://orbit-social.minearcade.org";
 const MOJANG_JOIN: &str = "https://sessionserver.mojang.com/session/minecraft/join";
+/// Fixed start of what is signed with Mojang; the server and Orbit Client use the same.
+const SIGN_IN_PREFIX: &str = "orbit-sign-in-v2:";
 
-/// Where the friends server is, and the sign-in for one account.
+/// The sign-in for one account.
 #[derive(Default)]
 pub struct Social {
-    server: Mutex<Option<(String, Instant)>>,
     /// (account uuid, server, token)
     token: Mutex<Option<(String, String, String)>>,
 }
 
 impl Social {
-    /// The server's base URL (`http://host:port`), looked up again every half hour.
-    async fn server(&self, http: &reqwest::Client) -> Result<String> {
-        let mut cached = self.server.lock().await;
-        if let Some((url, at)) = cached.as_ref() {
-            if at.elapsed() < RESOLVE_EVERY {
-                return Ok(url.clone());
-            }
-        }
-        let url = resolve(http).await?;
-        *cached = Some((url.clone(), Instant::now()));
-        Ok(url)
-    }
-
     async fn token(&self, http: &reqwest::Client, server: &str, account: &Account) -> Result<String> {
         let mut token = self.token.lock().await;
         if let Some((uuid, for_server, value)) = token.as_ref() {
@@ -54,9 +46,9 @@ impl Social {
 
     /// POST `path` as `account`; signs in again once when the server says the token expired.
     pub async fn call(&self, http: &reqwest::Client, account: &Account, path: &str, body: Option<String>) -> Result<Value> {
-        let server = self.server(http).await?;
+        let server = SERVER;
         for attempt in 0..2 {
-            let token = self.token(http, &server, account).await?;
+            let token = self.token(http, server, account).await?;
             let mut request = http
                 .post(format!("{server}{path}"))
                 .timeout(Duration::from_secs(10))
@@ -92,44 +84,16 @@ fn unreachable_server() -> LauncherError {
     LauncherError::msg("Can't reach Orbit's friends server.")
 }
 
-/// Look up the SRV record over DNS-over-HTTPS (Google, then Cloudflare): "priority weight port host".
-async fn resolve(http: &reqwest::Client) -> Result<String> {
-    let resolvers = [
-        format!("https://dns.google/resolve?name={SRV_NAME}&type=SRV"),
-        format!("https://cloudflare-dns.com/dns-query?name={SRV_NAME}&type=SRV"),
-    ];
-    for url in resolvers {
-        let Ok(response) = http.get(&url).header("Accept", "application/dns-json").timeout(Duration::from_secs(8)).send().await else {
-            continue;
-        };
-        let Ok(json) = response.json::<Value>().await else { continue };
-        if let Some(server) = parse_srv(&json) {
-            return Ok(server);
-        }
-    }
-    Err(unreachable_server())
-}
-
-fn parse_srv(json: &Value) -> Option<String> {
-    let answers = json.get("Answer")?.as_array()?;
-    for answer in answers {
-        // Type 33 is SRV.
-        if answer.get("type").and_then(Value::as_u64) != Some(33) {
-            continue;
-        }
-        let data = answer.get("data")?.as_str()?;
-        let parts: Vec<&str> = data.split_whitespace().collect();
-        if parts.len() < 4 {
-            continue;
-        }
-        let port: u16 = parts[2].parse().ok()?;
-        let host = parts[3].trim_end_matches('.');
-        if host.is_empty() || !host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') {
-            continue;
-        }
-        return Some(format!("http://{host}:{port}"));
-    }
-    None
+/// What the account tells Mojang it joined: SHA-1 of a fixed prefix, the server's challenge and a
+/// random number of the launcher's own, as 40 hex digits.
+///
+/// Signing the challenge as given would let whoever answers it (a fake server, or anyone between the
+/// player and the server) pass on the handshake value of a real Minecraft server they are joining
+/// under the player's name, and Mojang would then let them into that server as the player. Mixing
+/// in a number only the launcher knows means nobody else can choose the result.
+fn sign_in_id(challenge: &str, client: &str) -> String {
+    let digest = Sha1::digest(format!("{SIGN_IN_PREFIX}{challenge}:{client}").as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 async fn sign_in(http: &reqwest::Client, server: &str, account: &Account) -> Result<String> {
@@ -147,15 +111,21 @@ async fn sign_in(http: &reqwest::Client, server: &str, account: &Account) -> Res
         .and_then(Value::as_str)
         .ok_or_else(|| LauncherError::msg("Friends server error (sign-in)."))?
         .to_string();
+    // The server's challenges are 32 hex digits; anything else isn't one.
+    if server_id.len() != 32 || !server_id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(LauncherError::msg("Friends server error (sign-in)."));
+    }
+    let client = uuid::Uuid::new_v4().simple().to_string();
+    let signed = sign_in_id(&server_id, &client);
 
-    // Tell Mojang this account is joining "server_id"; the friends server then asks Mojang.
+    // Tell Mojang this account is joining `signed`; the friends server works out the same value and asks Mojang.
     let joined = http
         .post(MOJANG_JOIN)
         .timeout(Duration::from_secs(10))
         .json(&serde_json::json!({
             "accessToken": account.access_token,
             "selectedProfile": account.uuid.replace('-', ""),
-            "serverId": server_id,
+            "serverId": signed,
         }))
         .send()
         .await
@@ -166,7 +136,7 @@ async fn sign_in(http: &reqwest::Client, server: &str, account: &Account) -> Res
 
     let verified = http
         .post(format!("{server}/auth/verify"))
-        .query(&[("name", account.username.as_str()), ("serverId", server_id.as_str())])
+        .query(&[("name", account.username.as_str()), ("serverId", server_id.as_str()), ("client", client.as_str())])
         .timeout(Duration::from_secs(12))
         .send()
         .await
@@ -183,21 +153,19 @@ async fn sign_in(http: &reqwest::Client, server: &str, account: &Account) -> Res
 
 #[cfg(test)]
 mod tests {
-    use super::parse_srv;
+    use super::{sign_in_id, SERVER};
 
     #[test]
-    fn reads_the_srv_record() {
-        let json = serde_json::json!({"Answer": [
-            {"name": "_eclipse-cosmetics._tcp.minearcade.org.", "type": 33, "data": "0 5 25598 panel.minearcade.org."}
-        ]});
-        assert_eq!(parse_srv(&json).as_deref(), Some("http://panel.minearcade.org:25598"));
-        // A CNAME first, then the SRV.
-        let json = serde_json::json!({"Answer": [
-            {"type": 5, "data": "elsewhere.example."},
-            {"type": 33, "data": "0 5 8787 cosmetics.example.org."}
-        ]});
-        assert_eq!(parse_srv(&json).as_deref(), Some("http://cosmetics.example.org:8787"));
-        assert_eq!(parse_srv(&serde_json::json!({"Status": 3})), None);
-        assert_eq!(parse_srv(&serde_json::json!({"Answer": [{"type": 33, "data": "0 5 80 evil/host."}]})), None);
+    fn sign_in_value_matches_the_server_and_orbit_client() {
+        // The same value the cosmetics server's own test expects.
+        assert_eq!(
+            sign_in_id("00112233445566778899aabbccddeeff", "ffeeddccbbaa99887766554433221100"),
+            "d8229ecec4e7b41d986fe713523da24c75ccd438"
+        );
+    }
+
+    #[test]
+    fn the_friends_server_is_only_reached_over_https() {
+        assert!(SERVER.starts_with("https://"));
     }
 }
