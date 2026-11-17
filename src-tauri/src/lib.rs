@@ -82,6 +82,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // ---- auth ------------------------------------------------------
             commands::auth::auth_accounts,
+            commands::auth::auth_cancel_login,
             commands::auth::auth_current,
             commands::auth::auth_login_microsoft,
             commands::auth::auth_logout,

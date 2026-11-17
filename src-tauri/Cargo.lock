@@ -2754,6 +2754,7 @@ name = "orbit-launcher"
 version = "0.6.6"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
  "discord-rich-presence",

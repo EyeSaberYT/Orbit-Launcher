@@ -1,7 +1,7 @@
 //! Minecraft account authentication.
 //!
 //! Orbit Launcher only supports real Microsoft accounts, signed in through the
-//! Microsoft/Xbox Live chain with the device code flow (see [`microsoft`]).
+//! Microsoft/Xbox Live chain in an in-app Microsoft sign-in window (see [`microsoft`]).
 
 pub mod microsoft;
 

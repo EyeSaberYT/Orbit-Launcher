@@ -314,16 +314,18 @@ export async function stopInstance(id, name = 'Minecraft') {
 // ---------- Accounts ----------
 
 /**
- * Microsoft device-code sign-in. The backend emits `auth://device-code`
- * (handled in main.js, which stores it as `deviceCode`) and resolves once the
- * player has approved the sign-in in their browser.
+ * Microsoft sign-in, the way the Modrinth App does it: the backend opens
+ * Microsoft's own sign-in page in a separate window and resolves once the
+ * player has signed in there. Closing that window (or this dialog) cancels.
  */
+let signInCancelled = false;
+
 export function signIn() {
   if (store.state.signingIn) {
     showSignInDialog();
     return;
   }
-  store.set('deviceCode', null);
+  signInCancelled = false;
   store.set('signInError', null);
   store.set('signingIn', true);
   showSignInDialog();
@@ -336,7 +338,8 @@ export function signIn() {
       signInModal?.close();
     })
     .catch((error) => {
-      // Kept in the store so the dialog still shows it after the device code is cleared below.
+      // The player closed the dialog on purpose: nothing to report.
+      if (signInCancelled) return;
       store.set('signInError', errorText(error));
       if (!signInModal || signInModal.closed) {
         toast('Sign-in failed', { kind: 'error', description: errorText(error) });
@@ -344,7 +347,6 @@ export function signIn() {
     })
     .finally(() => {
       store.set('signingIn', false);
-      store.set('deviceCode', null);
     });
 }
 
@@ -355,13 +357,18 @@ function showSignInDialog() {
 
   signInModal = openModal({
     title: 'Sign in with Microsoft',
-    description: 'Use the Microsoft account that owns Minecraft: Java Edition. Orbit Launcher never sees your password.',
+    description: "Use the Microsoft account that owns Minecraft: Java Edition. You sign in on Microsoft's own page, so Orbit Launcher never sees your password.",
     size: 'sm',
     body: html`<div data-signin></div>`,
-    footer: html`<button class="btn btn-ghost" data-close>Close</button>`,
+    footer: html`<button class="btn btn-ghost" data-close>Cancel</button>`,
     onClose: () => {
       off();
       signInModal = null;
+      // Closing the dialog mid sign-in closes the Microsoft window too.
+      if (store.state.signingIn) {
+        signInCancelled = true;
+        api.auth.cancelLogin().catch(() => {});
+      }
     },
   });
   const slot = signInModal.body.querySelector('[data-signin]');
@@ -377,38 +384,14 @@ function showSignInDialog() {
       slot.querySelector('[data-retry]').addEventListener('click', () => signIn());
       return;
     }
-    const code = store.state.deviceCode;
-    if (!code) {
-      slot.innerHTML = String(html`<div class="loading-block">${spinner()} Contacting Microsoft…</div>`);
-      return;
-    }
-    let host = code.verificationUri;
-    try {
-      host = new URL(code.verificationUri).host;
-    } catch {
-      // Keep the raw string.
-    }
     slot.innerHTML = String(html`
       <div class="stack">
-        <p class="muted">Open the Microsoft page and enter this code:</p>
-        <div class="device-code selectable">${code.userCode}</div>
-        <div class="row">
-          <button class="btn btn-primary grow" data-open>${icon('external')} Copy code &amp; open ${host}</button>
-        </div>
+        <p class="muted">A Microsoft sign-in window has opened. Finish signing in there and it will close by itself.</p>
         <p class="row small muted" data-status style="justify-content:center">${spinner('icon-sm')} Waiting for you to finish signing in…</p>
       </div>`);
-    slot.querySelector('[data-open]').addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(code.userCode);
-        toast('Code copied', { kind: 'success', duration: 2000 });
-      } catch {
-        // The code stays visible and selectable.
-      }
-      api.system.openUrl(code.verificationUri).catch(toastError);
-    });
   };
 
-  const off = store.on(['deviceCode', 'signInError'], render);
+  const off = store.on(['signingIn', 'signInError'], render);
   render();
 }
 

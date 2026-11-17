@@ -28,8 +28,7 @@ const state = {
   launching: new Set(),
   /** Latest `download://progress` snapshot, or null. */
   progress: null,
-  /** Device-code prompt while a Microsoft sign-in is in progress. */
-  deviceCode: null,
+  /** True while a Microsoft sign-in window is open. */
   signingIn: false,
   /** Game console lines per instance: { [id]: [{ stream, text }] } */
   console: {},

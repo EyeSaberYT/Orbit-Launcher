@@ -9,7 +9,7 @@ plain HTML/CSS/JavaScript interface, with no frontend build step.
 **Playing**
 - One-click **Join server**: launches straight into the featured server (`farms.minearcade.org` by default, changeable in Settings), using Quick Play on 1.20+ and `--server` on older versions.
   New instances get the server added to their in-game multiplayer list automatically.
-- **Microsoft sign-in** (device code flow) with multiple accounts and automatic token refresh.
+- **Microsoft sign-in** (Microsoft's own sign-in page in an in-app window, OAuth code flow with PKCE) with multiple accounts and automatic token refresh.
 - Every Minecraft version: releases, snapshots and old betas/alphas.
 - **Fabric, Quilt, Forge and NeoForge**, installed automatically.
 - **Automatic Java**: the exact Mojang runtime each version needs is downloaded for you.

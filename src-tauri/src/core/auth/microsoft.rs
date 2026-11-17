@@ -1,14 +1,15 @@
 //! Microsoft → Xbox Live → Minecraft authentication chain.
 //!
-//! We use the **OAuth 2.0 device code flow**, which is the friendliest option
-//! for a desktop launcher: the user is shown a short code, opens
-//! `microsoft.com/link` in any browser, and the launcher polls until the sign-in
-//! completes. No embedded browser, no client secret, no loopback server.
+//! Sign-in works the way the Modrinth App's does: the launcher opens Microsoft's
+//! own sign-in page in a window of its own, the player signs in there, and the
+//! window closes by itself once Microsoft redirects back. Under the hood this is
+//! the **OAuth 2.0 authorization code flow with PKCE** (no client secret): the
+//! launcher catches the redirect inside that window and never sees the password.
 //!
 //! The chain is:
 //!
 //! ```text
-//! Microsoft identity (device code)
+//! Microsoft identity (authorization code + PKCE)
 //!   └─ Xbox Live user token (XBL)
 //!        └─ XSTS token (relying party: rp://api.minecraftservices.com/)
 //!             └─ Minecraft services token
@@ -30,9 +31,16 @@ use crate::error::{LauncherError, Result};
 /// with the personal account that owns Minecraft.
 const TENANT: &str = "consumers";
 
-fn device_code_url() -> String {
-    format!("https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/devicecode")
+fn authorize_url() -> String {
+    format!("https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/authorize")
 }
+
+/// Where Microsoft sends the player after signing in. It is never actually
+/// loaded: the sign-in window stops on it and reads the code from the url.
+///
+/// This is Microsoft's standard redirect for desktop apps. It must be enabled on
+/// the Azure app registration (Authentication → Mobile and desktop applications).
+pub const REDIRECT_URI: &str = "https://login.microsoftonline.com/common/oauth2/nativeclient";
 
 fn token_url() -> String {
     format!("https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/token")
@@ -48,31 +56,6 @@ const SCOPE: &str = "XboxLive.signin offline_access";
 // ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceCodeInfo {
-    pub user_code: String,
-    pub verification_uri: String,
-    pub message: String,
-    pub expires_in: u64,
-}
-
-#[derive(Deserialize)]
-struct DeviceCodeResponse {
-    device_code: String,
-    user_code: String,
-    verification_uri: String,
-    #[serde(default)]
-    message: String,
-    expires_in: u64,
-    #[serde(default = "default_interval")]
-    interval: u64,
-}
-
-fn default_interval() -> u64 {
-    5
-}
 
 #[derive(Deserialize)]
 struct TokenResponse {
@@ -174,100 +157,118 @@ struct McEntitlements {
 // Flow steps
 // ---------------------------------------------------------------------------
 
-/// Step 1: ask Microsoft for a device + user code.
-pub async fn request_device_code(
+/// One sign-in attempt: the page to open plus the secrets that prove the
+/// redirect that comes back belongs to it.
+pub struct AuthRequest {
+    /// Microsoft's sign-in page for this attempt.
+    pub url: url::Url,
+    /// Random value echoed back by Microsoft, so a stray redirect is rejected.
+    state: String,
+    /// PKCE secret: only its hash goes in `url`, so an intercepted code is useless.
+    verifier: String,
+}
+
+/// Base64url SHA-256 of the verifier (RFC 7636, method `S256`).
+fn pkce_challenge(verifier: &str) -> String {
+    use base64::Engine;
+    use sha2::Digest;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(verifier.as_bytes()))
+}
+
+impl AuthRequest {
+    /// Step 1: build Microsoft's sign-in page url for a fresh attempt.
+    pub fn new(client_id: &str) -> Self {
+        // Two v4 uuids come from the OS random source: 64 hex chars, ~244 bits.
+        let verifier = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+        let state = uuid::Uuid::new_v4().simple().to_string();
+        let challenge = pkce_challenge(&verifier);
+        let url = url::Url::parse_with_params(
+            &authorize_url(),
+            &[
+                ("client_id", client_id),
+                ("response_type", "code"),
+                ("response_mode", "query"),
+                ("redirect_uri", REDIRECT_URI),
+                ("scope", SCOPE),
+                ("state", state.as_str()),
+                ("code_challenge", challenge.as_str()),
+                ("code_challenge_method", "S256"),
+                // Always let the player pick (or add) an account.
+                ("prompt", "select_account"),
+            ],
+        )
+        .expect("the authorize url is valid");
+        Self { url, state, verifier }
+    }
+
+    /// Step 2: read a url the sign-in window is about to open.
+    ///
+    /// `None` while the player is still on Microsoft's pages; once the window
+    /// reaches [`REDIRECT_URI`], the authorization code or the reason it failed.
+    pub fn redirect_result(&self, url: &url::Url) -> Option<Result<String>> {
+        let redirect = url::Url::parse(REDIRECT_URI).expect("the redirect uri is valid");
+        if url.scheme() != redirect.scheme() || url.host_str() != redirect.host_str() || url.path() != redirect.path() {
+            return None;
+        }
+
+        let query = |key: &str| url.query_pairs().find(|(k, _)| k == key).map(|(_, v)| v.into_owned());
+        if let Some(error) = query("error") {
+            let detail = query("error_description").unwrap_or_default();
+            let detail = detail.lines().next().unwrap_or_default().trim();
+            return Some(Err(LauncherError::Auth(match error.as_str() {
+                "access_denied" => "Sign-in was cancelled.".into(),
+                _ if detail.is_empty() => format!("Microsoft sign-in failed ({error})."),
+                _ => format!("Microsoft sign-in failed ({error}): {detail}"),
+            })));
+        }
+        if query("state").as_deref() != Some(self.state.as_str()) {
+            return Some(Err(LauncherError::Auth(
+                "The sign-in response didn't match this sign-in attempt. Please try again.".into(),
+            )));
+        }
+        Some(
+            query("code")
+                .filter(|code| !code.is_empty())
+                .ok_or_else(|| LauncherError::Auth("Microsoft didn't return a sign-in code. Please try again.".into())),
+        )
+    }
+}
+
+/// Step 3: trade the authorization code for Microsoft tokens.
+pub async fn exchange_code(
     http: &reqwest::Client,
     client_id: &str,
-) -> Result<(DeviceCodeInfo, String, u64)> {
+    request: &AuthRequest,
+    code: &str,
+) -> Result<(String, Option<String>, i64)> {
     let res = http
-        .post(device_code_url())
-        .form(&[("client_id", client_id), ("scope", SCOPE)])
+        .post(token_url())
+        .form(&[
+            ("client_id", client_id),
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", REDIRECT_URI),
+            ("code_verifier", request.verifier.as_str()),
+            ("scope", SCOPE),
+        ])
         .send()
         .await?;
 
-    if !res.status().is_success() {
+    let status = res.status();
+    if !status.is_success() {
         let body = res.text().await.unwrap_or_default();
-        return Err(LauncherError::Auth(format!(
-            "Microsoft rejected the device code request. Check that your client id is correct. ({body})"
-        )));
+        log::warn!("Microsoft code exchange failed (HTTP {status}): {body}");
+        let err: Option<OAuthError> = serde_json::from_str(&body).ok();
+        let detail = err
+            .as_ref()
+            .map(|e| e.error_description.lines().next().unwrap_or_default().trim().to_string())
+            .filter(|d| !d.is_empty())
+            .unwrap_or_else(|| format!("HTTP {status}"));
+        return Err(LauncherError::Auth(format!("Microsoft sign-in failed: {detail}")));
     }
 
-    let device: DeviceCodeResponse = res.json().await?;
-    let info = DeviceCodeInfo {
-        user_code: device.user_code.clone(),
-        verification_uri: device.verification_uri.clone(),
-        message: if device.message.is_empty() {
-            "To sign in, open the link and enter the code below.".into()
-        } else {
-            device.message.clone()
-        },
-        expires_in: device.expires_in,
-    };
-    Ok((info, device.device_code, device.interval.max(1)))
-}
-
-/// Step 2: poll the token endpoint until the user finishes signing in.
-pub async fn poll_for_token(
-    http: &reqwest::Client,
-    client_id: &str,
-    device_code: &str,
-    interval: u64,
-    expires_in: u64,
-) -> Result<(String, Option<String>, i64)> {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(expires_in);
-    let mut delay = interval;
-
-    loop {
-        if std::time::Instant::now() > deadline {
-            return Err(LauncherError::Auth(
-                "The sign-in code expired before it was used. Please try again.".into(),
-            ));
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-
-        let res = http
-            .post(token_url())
-            .form(&[
-                ("client_id", client_id),
-                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
-                ("device_code", device_code),
-            ])
-            .send()
-            .await?;
-
-        if res.status().is_success() {
-            let token: TokenResponse = res.json().await?;
-            return Ok((token.access_token, token.refresh_token, token.expires_in));
-        }
-
-        // Polling errors are expected while the user is still authenticating.
-        let err: OAuthError = res.json().await.unwrap_or(OAuthError {
-            error: "unknown_error".into(),
-            error_description: String::new(),
-        });
-
-        match err.error.as_str() {
-            "authorization_pending" => continue,
-            "slow_down" => {
-                delay += 5;
-                continue;
-            }
-            "expired_token" | "bad_verification_code" => {
-                return Err(LauncherError::Auth(
-                    "The sign-in code expired. Please try again.".into(),
-                ))
-            }
-            "authorization_declined" => {
-                return Err(LauncherError::Auth("Sign-in was declined.".into()))
-            }
-            other => {
-                return Err(LauncherError::Auth(format!(
-                    "Microsoft sign-in failed ({other}): {}",
-                    err.error_description
-                )))
-            }
-        }
-    }
+    let token: TokenResponse = res.json().await?;
+    Ok((token.access_token, token.refresh_token, token.expires_in))
 }
 
 /// How many times a refresh is attempted when the connection itself fails
@@ -330,7 +331,7 @@ pub async fn refresh_token(
     Ok((token.access_token, token.refresh_token, token.expires_in))
 }
 
-/// Step 3: trade the Microsoft access token for an XSTS token and a Minecraft
+/// Step 4: trade the Microsoft access token for an XSTS token and a Minecraft
 /// services token.
 pub async fn xbox_chain(
     http: &reqwest::Client,
@@ -426,7 +427,7 @@ pub async fn xbox_chain(
     Ok((mc.access_token, mc.expires_in))
 }
 
-/// Step 4: fetch the player's Minecraft profile (uuid + username).
+/// Step 5: fetch the player's Minecraft profile (uuid + username).
 pub async fn fetch_profile(
     http: &reqwest::Client,
     mc_access_token: &str,
@@ -516,23 +517,15 @@ pub async fn check_entitlements(http: &reqwest::Client, mc_access_token: &str) -
 // High level helpers
 // ---------------------------------------------------------------------------
 
-/// Complete device-code sign-in, returning a ready-to-use [`Account`].
-///
-/// `on_code` is invoked once the user code is available so the UI can display
-/// it while we poll.
-pub async fn login<F>(
+/// Finish a sign-in once the window has handed back its authorization code,
+/// returning a ready-to-use [`Account`].
+pub async fn login(
     http: &reqwest::Client,
     client_id: &str,
-    on_code: F,
-) -> Result<Account>
-where
-    F: FnOnce(&DeviceCodeInfo),
-{
-    let (info, device_code, interval) = request_device_code(http, client_id).await?;
-    on_code(&info);
-
-    let (ms_token, refresh, _) =
-        poll_for_token(http, client_id, &device_code, interval, info.expires_in).await?;
+    request: &AuthRequest,
+    code: &str,
+) -> Result<Account> {
+    let (ms_token, refresh, _) = exchange_code(http, client_id, request, code).await?;
 
     let (mc_token, expires_in) = xbox_chain(http, &ms_token).await?;
     let owns = check_entitlements(http, &mc_token).await.ok().flatten();
@@ -631,5 +624,35 @@ mod tests {
             normalize_texture_url("http://example.test/x"),
             "http://example.test/x"
         );
+    }
+
+    #[test]
+    fn pkce_challenge_matches_the_rfc_example() {
+        // RFC 7636, appendix B.
+        assert_eq!(
+            pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+    }
+
+    #[test]
+    fn only_the_redirect_with_the_right_state_yields_a_code() {
+        let request = AuthRequest::new("client");
+        assert!(request.url.as_str().contains("code_challenge_method=S256"));
+        assert!(!request.url.as_str().contains(&request.verifier));
+
+        // Microsoft's own pages are left alone.
+        let page = url::Url::parse("https://login.live.com/oauth20_authorize.srf?x=1").unwrap();
+        assert!(request.redirect_result(&page).is_none());
+
+        let good = url::Url::parse(&format!("{REDIRECT_URI}?code=abc&state={}", request.state)).unwrap();
+        assert_eq!(request.redirect_result(&good).unwrap().unwrap(), "abc");
+
+        let forged = url::Url::parse(&format!("{REDIRECT_URI}?code=abc&state=other")).unwrap();
+        assert!(request.redirect_result(&forged).unwrap().is_err());
+
+        let denied = url::Url::parse(&format!("{REDIRECT_URI}?error=access_denied&state={}", request.state)).unwrap();
+        let message = request.redirect_result(&denied).unwrap().unwrap_err().to_string();
+        assert!(message.contains("cancelled"));
     }
 }

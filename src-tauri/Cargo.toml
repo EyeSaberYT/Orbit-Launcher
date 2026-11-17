@@ -63,6 +63,8 @@ walkdir = "2"
 # bundled keeps users off a system SQLite install.
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 url = "2.5.8"
+# PKCE code challenge for the Microsoft sign-in window.
+base64 = "0.22"
 
 [profile.release]
 codegen-units = 1

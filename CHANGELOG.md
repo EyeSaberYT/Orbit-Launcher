@@ -4,6 +4,12 @@ What changed in each Orbit Launcher release. The release build copies the sectio
 version onto the GitHub release page (and the Discord announcement), so write it for players:
 what they will notice, then what was fixed. A release without a section here does not build.
 
+## v0.6.7
+
+- **Easier Microsoft sign-in.** Signing in now opens Microsoft's own sign-in page in a launcher window.
+  It closes by itself once you're signed in, and there's no code to type in anymore. Closing the
+  window (or pressing Cancel) stops the sign-in.
+
 ## v0.6.6
 
 **Security fix for friends. Please update.**

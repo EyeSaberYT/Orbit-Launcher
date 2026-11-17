@@ -35,8 +35,10 @@ function invoke(command, args) {
 export const auth = {
   accounts: () => invoke('auth_accounts'),
   current: () => invoke('auth_current'),
-  /** Resolves once sign-in finishes; the code arrives as an `auth://device-code` event. */
+  /** Opens Microsoft's sign-in window; resolves once the player has signed in there. */
   loginMicrosoft: () => invoke('auth_login_microsoft'),
+  /** Closes the sign-in window, which rejects the pending `loginMicrosoft` as cancelled. */
+  cancelLogin: () => invoke('auth_cancel_login'),
   logout: (uuid) => invoke('auth_logout', { uuid }),
   setActive: (uuid) => invoke('auth_set_active', { uuid }),
 };

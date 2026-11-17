@@ -1,8 +1,11 @@
 //! Authentication commands.
 
-use tauri::{AppHandle, Emitter, State};
+use std::sync::{Arc, Mutex};
 
-use crate::core::auth::microsoft::{self, DeviceCodeInfo};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tokio::sync::oneshot;
+
+use crate::core::auth::microsoft::{self, AuthRequest};
 use crate::core::auth::{Account, AccountKind, AccountStore};
 use crate::core::config;
 use crate::error::{LauncherError, Result};
@@ -106,10 +109,79 @@ pub async fn auth_accounts(state: State<'_, AppState>) -> Result<Vec<PublicAccou
     Ok(public(&store))
 }
 
-/// Start the Microsoft device-code sign-in.
+/// Label of the Microsoft sign-in window, so a second sign-in replaces it.
+const LOGIN_WINDOW: &str = "microsoft-login";
+
+/// How long the sign-in window waits for the player before giving up.
+const LOGIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+fn cancelled() -> LauncherError {
+    LauncherError::Auth("Sign-in was cancelled.".into())
+}
+
+/// Open Microsoft's sign-in page in its own window and wait for its code.
 ///
-/// The user code is emitted as an `auth://device-code` event so the UI can show
-/// it while we poll in the background.
+/// The window shows Microsoft's real pages (with their real address), runs in a
+/// private session so nothing is remembered between sign-ins, and has no access
+/// to the launcher's commands. It is stopped as soon as Microsoft redirects back,
+/// so the code never reaches any server, then closed.
+async fn sign_in_window(app: &AppHandle, request: &Arc<AuthRequest>) -> Result<String> {
+    if let Some(stale) = app.get_webview_window(LOGIN_WINDOW) {
+        let _ = stale.destroy();
+    }
+
+    // Filled exactly once: by the redirect, or by the player closing the window.
+    let (tx, rx) = oneshot::channel::<Result<String>>();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+    let send = |tx: &Arc<Mutex<Option<oneshot::Sender<Result<String>>>>>, result: Result<String>| {
+        if let Some(tx) = tx.lock().ok().and_then(|mut slot| slot.take()) {
+            let _ = tx.send(result);
+        }
+    };
+
+    let nav_tx = tx.clone();
+    let nav_request = request.clone();
+    let mut builder = WebviewWindowBuilder::new(app, LOGIN_WINDOW, WebviewUrl::External(request.url.clone()))
+        .title("Sign in with Microsoft")
+        .inner_size(500.0, 680.0)
+        .min_inner_size(400.0, 500.0)
+        .center()
+        .focused(true)
+        .incognito(true)
+        .on_navigation(move |url| match nav_request.redirect_result(url) {
+            Some(result) => {
+                send(&nav_tx, result);
+                false
+            }
+            // Microsoft's pages are all https; refuse anything else outright.
+            None => url.scheme() == "https" || url.scheme() == "about",
+        });
+    if let Some(main) = app.get_webview_window("main") {
+        builder = builder.parent(&main).map_err(|e| LauncherError::Auth(e.to_string()))?;
+    }
+    let window = builder
+        .build()
+        .map_err(|e| LauncherError::Auth(format!("Couldn't open the Microsoft sign-in window: {e}")))?;
+
+    let close_tx = tx.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::Destroyed = event {
+            send(&close_tx, Err(cancelled()));
+        }
+    });
+
+    let outcome = tokio::time::timeout(LOGIN_TIMEOUT, rx).await;
+    let _ = window.destroy();
+    match outcome {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err(cancelled()),
+        Err(_) => Err(LauncherError::Auth("Sign-in timed out. Please try again.".into())),
+    }
+}
+
+/// Sign in with Microsoft through an in-app Microsoft sign-in window.
+///
+/// Resolves once the player has signed in there (or fails when they close it).
 #[tauri::command]
 pub async fn auth_login_microsoft(app: AppHandle, state: State<'_, AppState>) -> Result<PublicAccount> {
     let client_id = config::microsoft_client_id();
@@ -120,13 +192,9 @@ pub async fn auth_login_microsoft(app: AppHandle, state: State<'_, AppState>) ->
         ));
     }
 
-    let http = state.http.clone();
-    let emitter = app.clone();
-
-    let account = microsoft::login(&http, &client_id, move |info: &DeviceCodeInfo| {
-        let _ = emitter.emit("auth://device-code", info.clone());
-    })
-    .await?;
+    let request = Arc::new(AuthRequest::new(client_id));
+    let code = sign_in_window(&app, &request).await?;
+    let account = microsoft::login(&state.http, client_id, &request, &code).await?;
 
     let mut store = state.accounts.write().await;
     store.active = Some(account.uuid.clone());
@@ -140,6 +208,15 @@ pub async fn auth_login_microsoft(app: AppHandle, state: State<'_, AppState>) ->
         skin_url: account.skin_url,
         active: true,
     })
+}
+
+/// Close the Microsoft sign-in window, which ends a pending sign-in as cancelled.
+#[tauri::command]
+pub async fn auth_cancel_login(app: AppHandle) -> Result<()> {
+    if let Some(window) = app.get_webview_window(LOGIN_WINDOW) {
+        let _ = window.destroy();
+    }
+    Ok(())
 }
 
 #[tauri::command]

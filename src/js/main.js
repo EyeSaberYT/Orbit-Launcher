@@ -276,8 +276,6 @@ async function listenToBackend() {
     if (store.state.progress && !store.state.progress.finished) store.set('progress', null);
   });
 
-  await listen('auth://device-code', (info) => store.set('deviceCode', info));
-
   await listen('game://output', ({ instanceId, stream, line }) => appendConsole(instanceId, stream, line));
 
   await listen('game://exit', async ({ instanceId, code }) => {
