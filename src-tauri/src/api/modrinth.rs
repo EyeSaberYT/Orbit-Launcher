@@ -234,6 +234,8 @@ pub struct ResolvedFile {
     pub url: String,
     pub filename: String,
     pub sha1: Option<String>,
+    /// Modrinth's SHA-512 of the file (CurseForge has none).
+    pub sha512: Option<String>,
     pub size: u64,
     pub icon_url: Option<String>,
     /// True when this entry was pulled in as a dependency.
@@ -583,6 +585,7 @@ impl ModrinthClient {
                         url: file.url.clone(),
                         filename: file.filename.clone(),
                         sha1: file.hashes.get("sha1").cloned(),
+                        sha512: file.hashes.get("sha512").cloned(),
                         size: file.size,
                         icon_url: project.icon_url.clone(),
                         dependency: true,
@@ -621,6 +624,7 @@ impl ModrinthClient {
             url: file.url.clone(),
             filename: file.filename.clone(),
             sha1: file.hashes.get("sha1").cloned(),
+            sha512: file.hashes.get("sha512").cloned(),
             size: file.size,
             icon_url: project.and_then(|p| p.icon_url),
             dependency: false,

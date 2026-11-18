@@ -20,6 +20,11 @@ import { startUpdateCheck } from './updater.js';
 import { startOrbitClientUpdates } from './orbit-updates.js';
 import * as homePage from './pages/home.js';
 import { mountNavIndicator } from './motion.js';
+import { startFestive } from './festive.js';
+import { loadNews } from './news.js';
+import { hasUnseenUpdates } from './pages/updates.js';
+import { hideSplash } from './splash.js';
+import { maybeStartOnboarding } from './onboarding.js';
 
 // ---------- Routes ----------
 
@@ -32,6 +37,7 @@ route('/discover/:type?', () => import('./pages/discover.js'));
 route('/project/:source/:id', () => import('./pages/project.js'));
 route('/settings/:section?', () => import('./pages/settings.js'));
 route('/friends', () => import('./pages/friends.js'));
+route('/updates', () => import('./pages/updates.js'));
 
 // ---------- Shell: the top bar's tabs and status ----------
 
@@ -41,6 +47,7 @@ const sectionOf = (path) => {
   if (path.startsWith('/discover') || path.startsWith('/project')) return 'discover';
   if (path.startsWith('/settings')) return 'settings';
   if (path.startsWith('/friends')) return 'friends';
+  if (path.startsWith('/updates')) return 'updates';
   return '';
 };
 
@@ -61,6 +68,13 @@ function mountNav() {
   onNavigate(highlight);
   highlight(currentRoute().path);
   mountAccountMenu($('#account-box'));
+
+  // A dot on Updates while there are posts the player hasn't seen yet.
+  const updatesDot = $('#updates-dot');
+  const checkUpdates = () => loadNews().then(({ entries }) => { updatesDot.hidden = !hasUnseenUpdates(entries); }).catch(() => {});
+  window.addEventListener('orbit:updates-seen', () => { updatesDot.hidden = true; });
+  setTimeout(checkUpdates, 4000);
+  setInterval(checkUpdates, 30 * 60 * 1000);
 
   // Unread messages and friend requests, on the Friends tab.
   const badge = $('#friends-badge');
@@ -299,11 +313,15 @@ async function listenToBackend() {
 
 // ---------- Boot ----------
 
+// December's snowy look (and nothing the rest of the year); applied first so the boot screen has it too.
+startFestive();
+
 let routerStarted = false;
 async function showLauncher() {
   if (routerStarted) return;
   routerStarted = true;
   await startRouter();
+  await hideSplash();
 }
 const setBootStage = text => {
   const label = $('[data-boot-stage]');
@@ -328,6 +346,7 @@ async function boot() {
     await listenToBackend();
     await Promise.all([refreshInstances(), refreshAccounts(), refreshRunning()]);
     await showLauncher();
+    maybeStartOnboarding();
     startUpdateCheck();
     startOrbitClientUpdates();
     startFriends();

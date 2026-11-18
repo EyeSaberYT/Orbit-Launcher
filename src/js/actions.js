@@ -4,6 +4,7 @@ import * as api from './api.js';
 import { errorText } from './tauri.js';
 import { store, activeAccount } from './store.js';
 import { confirmDialog, html, icon, openModal, spinner, toast, toastError } from './ui.js';
+import { motionReduced } from './motion.js';
 
 // ---------- Loading ----------
 
@@ -89,9 +90,19 @@ export async function saveSettings(patch) {
 
 const lightQuery = window.matchMedia('(prefers-color-scheme: light)');
 
+let themeApplied = false;
+
 export function applyTheme(theme) {
   const light = theme === 'light' || (theme === 'system' && lightQuery.matches);
-  document.documentElement.dataset.theme = light ? 'light' : 'dark';
+  const next = light ? 'light' : 'dark';
+  const root = document.documentElement;
+  if (themeApplied && root.dataset.theme === next) return;
+  // Switching between light and dark cross-fades the whole window (motion.css); the first paint doesn't.
+  const swap = () => { root.dataset.theme = next; };
+  const animate = themeApplied && document.startViewTransition && !motionReduced();
+  if (animate) document.startViewTransition(swap);
+  else swap();
+  themeApplied = true;
 }
 
 lightQuery.addEventListener('change', () => applyTheme(store.state.settings?.theme ?? 'dark'));

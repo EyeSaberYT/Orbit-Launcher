@@ -82,6 +82,13 @@ export const instances = {
   slug: (name) => invoke('instance_slug', { name }),
 };
 
+/** The Christmas advent calendar on the Orbit server (signed in with the active account). */
+export const advent = {
+  /** { uuid, claimed: number[], open: number[] } */
+  status: () => invoke('advent_status'),
+  claim: (day) => invoke('advent_claim', { day }),
+};
+
 export const importApi = {
   /** ImportScan { sources: ImportSourceInfo[], candidates: ImportCandidate[] } */
   scan: () => invoke('import_scan'),

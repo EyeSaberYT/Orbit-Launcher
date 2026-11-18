@@ -422,6 +422,7 @@ impl CurseForgeClient {
             url,
             filename: file.filename.clone(),
             sha1: file.hashes.get("sha1").cloned(),
+            sha512: None,
             size: file.size,
             icon_url: project.and_then(|p| p.icon_url),
             dependency: false,

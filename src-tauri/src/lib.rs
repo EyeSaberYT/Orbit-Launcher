@@ -121,6 +121,8 @@ pub fn run() {
             commands::launch::launch_running,
             commands::launch::launch_stop,
             commands::social::social_poll,
+            commands::social::advent_status,
+            commands::social::advent_claim,
             commands::social::social_request,
             commands::social::social_accept,
             commands::social::social_remove,

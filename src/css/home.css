@@ -87,4 +87,4 @@
 }
 @media (max-width: 1050px) { .play-home { padding-left: 8px; padding-right: 8px; } .home-dashboard { gap: 16px; grid-template-columns: minmax(0,1.2fr) minmax(280px,1fr); } .launch-card { padding-left: 22px; padding-right: 22px; } .home-instance-meta { gap: 12px; } .home-instance-meta > span { font-size: 10px; } }
 @media (max-width: 760px) { .play-home { padding: 36px 0 0; gap: 40px; } .home-intro { padding: 0 8px; } .home-intro h1 { font-size: 58px; } .home-dashboard { grid-template-columns: 1fr; } .home-bottom { gap: 20px; } .home-library { min-height: 220px; } .home-instance-list { max-height: 210px; } .home-footer { padding-bottom: 8px; } .home-footer > span:last-child { display: none; } }
-@media (prefers-reduced-motion: reduce) { .home-play-btn, .home-round-btn, .home-explore .icon { transition: none; transform: none !important; } }
+/* Animations: Off (Settings > Appearance) */ :root[data-reduce-motion] .home-play-btn, :root[data-reduce-motion] .home-round-btn, :root[data-reduce-motion] .home-explore .icon { transition: none; transform: none !important; } 

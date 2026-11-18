@@ -17,10 +17,12 @@ pub fn no_console(command: &mut tokio::process::Command) -> &mut tokio::process:
 
 pub mod auth;
 pub mod backups;
+pub mod borderless;
 pub mod cfpack;
 pub mod config;
 pub mod discord;
 pub mod download;
+pub mod gpu;
 pub mod import;
 pub mod instance;
 pub mod java;

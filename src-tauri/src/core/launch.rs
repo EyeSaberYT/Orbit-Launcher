@@ -207,6 +207,10 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
         jvm_args.push(NVIDIA_PROFILE_ARG.into());
     }
     jvm_args.extend(instance.settings.jvm_args.clone());
+    if settings.auto_fps {
+        add_game_gc_flags(&mut jvm_args);
+    }
+    add_security_flags(&mut jvm_args, runtime.major);
 
     let ctx = LaunchContext {
         version: installed.version.clone(),
@@ -222,7 +226,9 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
         user_type: account.user_type().to_string(),
         width: instance.settings.width,
         height: instance.settings.height,
-        fullscreen: instance.settings.fullscreen,
+        // Borderless replaces Minecraft's own (exclusive) fullscreen: it starts windowed and the launcher
+        // takes the frame off once the window is up.
+        fullscreen: instance.settings.fullscreen && !settings.borderless_game,
         memory_min: instance.settings.memory_min,
         memory_max: instance.settings.memory_max,
         extra_jvm_args: jvm_args,
@@ -257,6 +263,9 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
         chrono::Local::now().format("%Y%m%d-%H%M%S")
     ));
 
+    if settings.fast_gpu {
+        crate::core::gpu::prefer_fast_gpu(&java_path);
+    }
     let mut command = tokio::process::Command::new(&java_path);
     command
         .args(&args)
@@ -300,6 +309,9 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
         .map_err(|e| LauncherError::Launch(format!("Couldn't start Java: {e}")))?;
 
     let pid = child.id().unwrap_or(0);
+    if settings.borderless_game && pid != 0 {
+        super::borderless::make_game_window_borderless(pid);
+    }
     let started = std::time::Instant::now();
     let running = RunningGame {
         instance_id: instance.id.clone(),
@@ -459,6 +471,40 @@ fn set_sodium_nvidia_workaround_off(game_dir: &Path, enabled: bool) -> std::io::
 
 /// Above-normal priority, like Lunar: Windows favours the game over programs in the background
 /// without starving input, audio or Windows itself the way High priority can.
+/// Protections for the game's Java, whatever the settings say.
+///
+/// CVE-2026-114938: Java 17, 21 and 25 on CPUs with AVX-512 VBMI (Intel Ice Lake and newer, AMD Zen 4 and
+/// newer) can overwrite memory while decoding malformed Base64. Minecraft decodes Base64 a server sends
+/// (player skins, profile properties), so a hostile server could crash the game. Turning off the fast
+/// decoding path that has the bug costs nothing a player can notice. The flag exists on Java 11 and newer;
+/// Java 8 doesn't have the bug and would refuse to start with the flag, so it never gets it.
+/// TODO: drop this once every Java the launcher installs has the November 2026 fix.
+fn add_security_flags(jvm_args: &mut Vec<String>, java_major: u32) {
+    const NO_BASE64_INTRINSICS: &str = "-XX:-UseBASE64Intrinsics";
+    if java_major >= 11 && !jvm_args.iter().any(|arg| arg.contains("UseBASE64Intrinsics")) {
+        jvm_args.push(NO_BASE64_INTRINSICS.into());
+    }
+}
+
+/// Garbage collection tuned for a game, unless the player chose their own collector: G1 (Java's default
+/// since 9, chosen here for Java 8 too), processing references in parallel, and no full collections when a
+/// mod calls `System.gc()`. All three are ordinary flags on every Java from 8 to 25, so no Java refuses them.
+fn add_game_gc_flags(jvm_args: &mut Vec<String>) {
+    let own_collector = jvm_args.iter().any(|arg| {
+        let arg = arg.trim();
+        arg.starts_with("-XX:+Use") && arg.ends_with("GC") || arg.starts_with("-XX:-Use") && arg.ends_with("GC")
+    });
+    if own_collector {
+        return;
+    }
+    for flag in ["-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled", "-XX:+DisableExplicitGC"] {
+        let name = &flag[5..];
+        if !jvm_args.iter().any(|arg| arg.contains(name)) {
+            jvm_args.push(flag.into());
+        }
+    }
+}
+
 fn above_normal_priority(command: &mut tokio::process::Command) {
     #[cfg(windows)]
     {
@@ -1136,5 +1182,38 @@ mod orbit_java_tests {
         assert_eq!(required_java(21, LoaderKind::Fabric, &mods), 21);
         assert_eq!(required_java(25, LoaderKind::Fabric, &mods), 25);
         std::fs::remove_dir_all(mods).ok();
+    }
+}
+
+#[cfg(test)]
+mod gc_flag_tests {
+    use super::{add_game_gc_flags, add_security_flags};
+
+    #[test]
+    fn the_base64_fix_is_only_given_to_java_that_has_the_flag() {
+        let mut args = vec![];
+        add_security_flags(&mut args, 8);
+        assert!(args.is_empty(), "Java 8 would refuse to start");
+        for major in [17, 21, 25] {
+            let mut args = vec![];
+            add_security_flags(&mut args, major);
+            add_security_flags(&mut args, major);
+            assert_eq!(args, ["-XX:-UseBASE64Intrinsics"]);
+        }
+    }
+
+    #[test]
+    fn game_gc_flags_are_added_once() {
+        let mut args = vec!["-Dfile.encoding=UTF-8".to_string()];
+        add_game_gc_flags(&mut args);
+        add_game_gc_flags(&mut args);
+        assert_eq!(args, ["-Dfile.encoding=UTF-8", "-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled", "-XX:+DisableExplicitGC"]);
+    }
+
+    #[test]
+    fn a_collector_the_player_chose_is_kept() {
+        let mut args = vec!["-XX:+UseZGC".to_string()];
+        add_game_gc_flags(&mut args);
+        assert_eq!(args, ["-XX:+UseZGC"]);
     }
 }

@@ -54,7 +54,7 @@ export function mountContent(pane, ctx) {
   /** Paths with a toggle or delete in flight. */
   const pending = new Set();
   /** Performance mods are published for Fabric and Quilt; other instances don't get the button. */
-  const offersPerformance = ['fabric', 'quilt'].includes(ctx.instance?.loader);
+  const offersPerformance = ['fabric', 'quilt', 'forge', 'neoforge'].includes(ctx.instance?.loader);
   let addingPerformance = false;
 
   setHtml(

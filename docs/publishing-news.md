@@ -18,7 +18,7 @@ The repository is configured once in `src/js/news.js` as `NEWS_REPOSITORY`.
 5. Check **Set as a pre-release** and leave **Set as the latest release** off.
    This keeps a news-only post out of the signed app updater's latest-release feed.
    The launcher recognizes `news-` tags as announcements even with that checkbox set.
-6. Publish the release. Drafts stay out of the feed. Refresh the news panel to check it.
+6. Publish the release. Drafts stay out of the feed. Press refresh on the Updates tab to check it.
 
 The existing build workflow only runs for `v*` tags, so a `news-` tag does not
 trigger an installer build. Do not change the version numbers or updater manifest

@@ -210,7 +210,7 @@ td .sub { display: block; font-size: var(--fs-small); color: var(--muted); }
   .segmented { display: flex; width: 100%; }
   .segmented button { flex: 1; }
 }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0.01ms !important; animation: none !important; } }
+/* Animations: Off (Settings > Appearance) */ :root[data-reduce-motion] *, :root[data-reduce-motion] *::before, :root[data-reduce-motion] *::after { transition-duration: 0.01ms !important; animation: none !important; } 
 
 /* an empty message spans the block it stands in, never one squeezed column */
 .rows .empty, .grid > .empty, li > .empty { grid-column: 1 / -1; width: 100%; }

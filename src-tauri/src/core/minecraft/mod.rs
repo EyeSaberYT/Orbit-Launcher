@@ -486,7 +486,7 @@ fn extract_natives(jars: &[(PathBuf, Vec<String>)], dest: &Path) -> Result<()> {
         let mut archive = zip::ZipArchive::new(file)?;
         for i in 0..archive.len() {
             let mut entry = archive.by_index(i)?;
-            let raw_name = entry.name().to_string();
+            let raw_name = entry.name()?.to_string();
 
             // Never extract signatures, manifests or anything explicitly excluded.
             if raw_name.starts_with("META-INF/") {

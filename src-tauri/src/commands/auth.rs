@@ -155,6 +155,14 @@ async fn sign_in_window(app: &AppHandle, request: &Arc<AuthRequest>) -> Result<S
             }
             // Microsoft's pages are all https; refuse anything else outright.
             None => url.scheme() == "https" || url.scheme() == "about",
+        })
+        // A link that would open another window (help pages, "create account") opens in the player's browser
+        // instead, never as an extra launcher window outside these checks.
+        .on_new_window(|url, _| {
+            if url.scheme() == "https" {
+                let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+            }
+            tauri::webview::NewWindowResponse::Deny
         });
     if let Some(main) = app.get_webview_window("main") {
         builder = builder.parent(&main).map_err(|e| LauncherError::Auth(e.to_string()))?;

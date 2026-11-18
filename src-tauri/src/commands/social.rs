@@ -26,6 +26,21 @@ pub async fn social_poll(state: State<'_, AppState>, since: u64) -> Result<Value
     call(&state, format!("/social/poll?since={since}{presence}"), None).await
 }
 
+/// The advent calendar on the Orbit server: this account's claimed doors this year and the doors open now.
+#[tauri::command]
+pub async fn advent_status(state: State<'_, AppState>) -> Result<Value> {
+    call(&state, "/advent".into(), None).await
+}
+
+/// Claim one advent calendar door (1 to 24). The server only accepts it while it's that date somewhere.
+#[tauri::command]
+pub async fn advent_claim(state: State<'_, AppState>, day: u8) -> Result<Value> {
+    if !(1..=24).contains(&day) {
+        return Err(crate::error::LauncherError::msg("There is no such door."));
+    }
+    call(&state, "/advent/claim".into(), Some(format!("{{\"day\":{day}}}"))).await
+}
+
 #[tauri::command]
 pub async fn social_request(state: State<'_, AppState>, name: String) -> Result<Value> {
     call(&state, format!("/friends/request?name={}", enc(name.trim())), None).await

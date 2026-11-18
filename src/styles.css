@@ -153,20 +153,15 @@ textarea {
 }
 
 /* Decorative motion only: spinners and progress bars keep moving. */
-@media (prefers-reduced-motion: reduce) {
-  .modal,
-  .modal-backdrop,
-  .menu,
-  .drop-overlay {
+/* Animations: Off (Settings > Appearance) */
+  :root[data-reduce-motion] .modal, :root[data-reduce-motion] .modal-backdrop, :root[data-reduce-motion] .menu, :root[data-reduce-motion] .drop-overlay {
     animation: none !important;
   }
 
-  .inst-card:hover,
-  .dc-card:hover,
-  .dc-card:focus-visible {
+  :root[data-reduce-motion] .inst-card:hover, :root[data-reduce-motion] .dc-card:hover, :root[data-reduce-motion] .dc-card:focus-visible {
     transform: none !important;
   }
-}
+
 
 a {
   color: var(--cyan);

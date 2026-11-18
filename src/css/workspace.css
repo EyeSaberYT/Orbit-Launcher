@@ -274,6 +274,6 @@ body :is(.btn-outline, .home-round-btn, .account-btn):hover:not(:disabled)::befo
   .home-bottom { grid-template-columns: minmax(0,1fr); }
   .home-news { grid-column: 1; }
 }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition-duration: 0s !important; }
-}
+/* Animations: Off (Settings > Appearance) */
+  :root[data-reduce-motion] *, :root[data-reduce-motion] *::before, :root[data-reduce-motion] *::after { animation: none !important; transition-duration: 0s !important; }
+

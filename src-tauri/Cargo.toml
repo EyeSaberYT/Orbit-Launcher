@@ -1,6 +1,6 @@
 [package]
 name = "orbit-launcher"
-version = "0.6.6"
+version = "0.6.7"
 description = "Orbit Launcher - a Minecraft launcher with Orbit Client built in"
 authors = ["Orbit Launcher"]
 edition = "2021"
@@ -49,7 +49,7 @@ chrono = { version = "0.4", features = ["serde"] }
 md-5 = "0.10"
 sha1 = "0.10"
 sha2 = "0.10"
-zip = { version = "2", default-features = false, features = ["deflate", "time"] }
+zip = { version = "9.7", default-features = false, features = ["deflate", "time"] }
 # `servers.dat` is gzipped NBT. fastnbt hands back a full value tree, which is
 # what lets us edit the fields we own without dropping the ones we don't.
 fastnbt = "2"
@@ -61,7 +61,7 @@ discord-rich-presence = "1.1"
 walkdir = "2"
 # Reads the Modrinth App's SQLite database (app.db) during launcher import;
 # bundled keeps users off a system SQLite install.
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 url = "2.5.8"
 # PKCE code challenge for the Microsoft sign-in window.
 base64 = "0.22"

@@ -8,7 +8,7 @@ import { revealInstanceFolder } from './instance/shared.js';
 import { navigate } from '../router.js';
 import { activeAccount, prefs, store } from '../store.js';
 import { launcherAvailability } from '../load-state.js';
-import { mountNewsFeed } from '../components/news-feed.js';
+import { mountAdventCalendar } from '../components/advent-calendar.js';
 import { animateSurface } from '../motion.js';
 import { formatDuration, html, icon, instanceIcon, loaderLabel, relativeTime, setHtml, showMenu, spinner } from '../ui.js';
 
@@ -46,12 +46,12 @@ export function render(root) {
         <section class="launch-card glass" aria-label="Selected instance" data-launch-card></section>
         <section class="home-library glass" aria-labelledby="home-library-heading" data-library></section>
       </div>
-      <aside class="home-news glass" aria-labelledby="home-news-heading" data-news-feed></aside>
+      <aside class="home-side glass" aria-labelledby="home-side-heading" data-home-side></aside>
       <div class="home-footer"><span class="home-welcome" data-welcome></span><span>Made for the way you play.</span></div>
     </div>
   </div>`);
 
-  const disposeNews = mountNewsFeed(root.querySelector('[data-news-feed]'));
+  const disposeSide = mountAdventCalendar(root.querySelector('[data-home-side]'));
   const launchEl = root.querySelector('[data-launch-card]');
   const libraryEl = root.querySelector('[data-library]');
   const select = (id) => {
@@ -178,7 +178,7 @@ export function render(root) {
   draw();
   const off = store.on(['instances', 'instancesLoaded', 'loadErrors', 'refreshingData', 'accounts', 'running', 'runningCounts', 'launching', 'settings', 'orbitInstalling'], draw);
   return () => {
-    disposeNews();
+    disposeSide();
     off();
     root.removeEventListener('click', onClick);
     root.removeEventListener('contextmenu', onContextMenu);

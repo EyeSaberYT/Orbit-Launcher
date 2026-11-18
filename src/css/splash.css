@@ -1,0 +1,49 @@
+/* The splash screen while the launcher starts (js/splash.js). Frosted over the sky like the rest of the
+   launcher: the star draws in, its orbits trace around it, the wordmark rises, then everything lifts away. */
+.splash {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center;
+  background: radial-gradient(120% 90% at 50% 42%, rgba(16,34,34,.18), rgba(6,16,18,.62));
+  backdrop-filter: blur(30px) saturate(140%); -webkit-backdrop-filter: blur(30px) saturate(140%);
+  color: #fff;
+  transition: opacity 640ms var(--ease-fluid), backdrop-filter 640ms var(--ease-fluid), -webkit-backdrop-filter 640ms var(--ease-fluid);
+}
+:root[data-theme='light'] .splash { background: radial-gradient(120% 90% at 50% 42%, rgba(30,56,52,.1), rgba(14,32,34,.5)); }
+.splash-core { display: flex; flex-direction: column; align-items: center; transition: transform 700ms var(--ease-fluid), opacity 480ms ease; }
+.splash-emblem { position: relative; display: grid; place-items: center; width: 200px; height: 200px; }
+.splash-glow { position: absolute; inset: 40px; border-radius: 50%; background: radial-gradient(circle, rgba(214,246,190,.5), rgba(214,246,190,0) 68%); filter: blur(6px); animation: splash-glow 2600ms ease-in-out 600ms infinite both; }
+.splash-rings { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: none; }
+.splash-ring { stroke: rgba(255,255,255,.55); stroke-width: 1.4; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: splash-draw 1100ms var(--ease-fluid) forwards; }
+.splash-ring.is-tilted { transform: rotate(-24deg); transform-origin: 100px 100px; stroke: rgba(214,246,190,.8); animation-delay: 220ms; }
+.splash-ring.is-round { stroke: rgba(255,255,255,.28); stroke-dasharray: 1; animation-delay: 380ms; }
+.splash-orbiter { transform-origin: 100px 100px; fill: #e9ffd6; opacity: 0; animation: splash-fade-in 400ms ease 900ms forwards, spin 2400ms linear 900ms infinite; filter: drop-shadow(0 0 6px #d6f6be); }
+.splash-orbiter.is-slow { fill: #fff; animation: splash-fade-in 400ms ease 1100ms forwards, spin 4200ms linear 1100ms infinite reverse; }
+.splash-logo { position: relative; background: url('../assets/logo.svg') center / contain no-repeat; width: 84px; height: 84px; opacity: 0; transform: scale(.4) rotate(-40deg); animation: splash-logo 900ms cubic-bezier(.34,1.56,.64,1) 120ms forwards; }
+.splash-word { display: flex; margin-top: 18px; font-size: 40px; font-weight: 650; letter-spacing: -.05em; line-height: 1; }
+.splash-word span { display: inline-block; opacity: 0; transform: translateY(14px); animation: splash-rise 620ms var(--ease-fluid) forwards; }
+.splash-word span:nth-child(1) { animation-delay: 520ms; } .splash-word span:nth-child(2) { animation-delay: 570ms; }
+.splash-word span:nth-child(3) { animation-delay: 620ms; } .splash-word span:nth-child(4) { animation-delay: 670ms; }
+.splash-word span:nth-child(5) { animation-delay: 720ms; }
+.splash-tag { margin-top: 8px; font-size: 11px; font-weight: 600; letter-spacing: .28em; text-transform: uppercase; color: rgba(255,255,255,.72); opacity: 0; animation: splash-fade-in 600ms ease 860ms forwards; }
+.splash-progress { position: relative; width: 180px; height: 3px; margin-top: 30px; border-radius: 3px; background: rgba(255,255,255,.16); overflow: hidden; opacity: 0; animation: splash-fade-in 400ms ease 900ms forwards; }
+.splash-progress > span { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, #b3df7b, #e9ffd6); transform-origin: left; transform: scaleX(.04); animation: splash-fill 6s cubic-bezier(.1,.7,.2,1) 900ms forwards; }
+.splash-progress::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); transform: translateX(-100%); animation: splash-sheen 1400ms ease-in-out 1200ms infinite; }
+.splash-stage { min-height: 1.5em; margin-top: 12px; font-size: 12px; color: rgba(255,255,255,.78); opacity: 0; animation: splash-fade-in 400ms ease 1000ms forwards; }
+.splash.is-done .splash-progress > span { transform: scaleX(1); transition: transform 240ms ease-out; animation: none; }
+.splash.is-leaving { opacity: 0; backdrop-filter: blur(0) saturate(100%); -webkit-backdrop-filter: blur(0) saturate(100%); pointer-events: none; }
+.splash.is-leaving .splash-core { transform: scale(1.12); opacity: 0; }
+/* The launcher settles into place as the splash lifts off it. */
+:root.is-revealing .app { animation: splash-reveal 760ms var(--ease-fluid) both; }
+
+@keyframes splash-draw { to { stroke-dashoffset: 0; } }
+@keyframes splash-logo { to { opacity: 1; transform: none; } }
+@keyframes splash-rise { to { opacity: 1; transform: none; } }
+@keyframes splash-fade-in { to { opacity: 1; } }
+@keyframes splash-fill { to { transform: scaleX(.86); } }
+@keyframes splash-sheen { to { transform: translateX(100%); } }
+@keyframes splash-glow { 0%, 100% { opacity: .55; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes splash-reveal { from { transform: scale(.975); } to { transform: none; } }
+
+/* Animations: Off (Settings > Appearance): the splash is still, then simply goes. */
+:root[data-reduce-motion] :is(.splash-ring, .splash-logo, .splash-word span, .splash-tag, .splash-progress, .splash-stage, .splash-orbiter) { opacity: 1; transform: none; stroke-dashoffset: 0; }
+:root[data-reduce-motion] .splash-ring.is-tilted { transform: rotate(-24deg); }

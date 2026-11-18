@@ -166,7 +166,7 @@ pub fn extract_overrides(pack: &Path, game_dir: &Path, overrides_dir: &str) -> R
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let name = entry.name().to_string();
+        let name = entry.name()?.to_string();
         let Some(relative) = name.strip_prefix(&prefix) else {
             continue;
         };

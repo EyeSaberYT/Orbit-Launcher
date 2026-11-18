@@ -1,0 +1,37 @@
+/* The festive look (December; see js/festive.js). Everything here only applies under
+   <html data-festive="on">, so the rest of the year the launcher is unchanged. */
+
+/* Snowy sky: the dusk shot for the dark theme, the bright day for the light theme. */
+.sky { transition: background-image 700ms var(--ease-fluid, ease); }
+:root[data-festive='on'] .sky { background-image: url('../assets/festive/snow-dusk.jpg'); background-color: #2a2836; }
+:root[data-festive='on'][data-theme='light'] .sky { background-image: url('../assets/festive/snow-day.jpg'); background-color: #dfe8f2; }
+
+/* Pixel-art ice spikes (assets/festive/ice-spikes-*.png, made by icegen.py) along the bottom of the window,
+   behind the containers: drawn small and shown about 6x larger with hard pixel edges, like a 2D game. The tile
+   repeats seamlessly sideways. */
+:root[data-festive='on'] .sky::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Tall enough for the biggest spikes to rise above the containers; the pixels scale with the window. */
+  height: clamp(300px, 62vh, 600px);
+  background: url('../assets/festive/ice-spikes-dark.png') left bottom / auto 100% repeat-x;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+:root[data-festive='on'][data-theme='light'] .sky::before { background-image: url('../assets/festive/ice-spikes-light.png'); }
+
+/* Snowfall drawn by js/festive.js, behind the interface. */
+.snowfall { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1600ms ease; }
+.snowfall.is-on { opacity: 1; }
+:root[data-theme='light'] .snowfall.is-on { opacity: .75; }
+
+/* The bright snowy day is lighter than the usual sky: a soft shade on the left keeps the white headline
+   readable in the light theme. */
+:root[data-festive='on'][data-theme='light'] .sky::after { background: linear-gradient(90deg, rgba(18, 32, 44, .52), rgba(18, 32, 44, .2) 40%, transparent 66%); }
+
+/* Animations: Off (Settings > Appearance) */
+  :root[data-reduce-motion] .snowfall { display: none; }
+

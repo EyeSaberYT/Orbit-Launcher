@@ -7,7 +7,7 @@ import { navigate } from '../router.js';
 import { store } from '../store.js';
 import { formatBytes, html, icon, openModal, setHtml, spinner, toast, toastError } from '../ui.js';
 import { checkForUpdates, installUpdate, relaunchApp } from '../updater.js';
-import { animateSurface } from '../motion.js';
+import { animateSurface, applyMotion, motionPreference } from '../motion.js';
 
 const JAVA_MAJORS = [8, 16, 17, 21, 25];
 const RELEASES_URL = 'https://github.com/MineArcadeStudio/Orbit-Launcher/releases/latest';
@@ -140,6 +140,17 @@ function mount(root, initialPanel, close) {
               <span class="mono tiny muted">${accent.custom.toUpperCase()}</span>
               <input type="color" data-custom-accent value="${accent.custom}" aria-label="Choose a custom accent color">
             </label>
+          </div>
+          <div style="margin-top:28px">
+            <h3 style="font-size:14px">Animations</h3>
+            <p class="small muted" style="margin:4px 0 12px">Page changes, lists and buttons move smoothly. Turn them off to keep everything still.</p>
+            <div class="accent-choices" role="radiogroup" aria-label="Animations">
+              ${[['on', 'On'], ['off', 'Off'], ['system', 'Match Windows']].map(
+                ([id, label]) => html`<button class="accent-choice ${motionPreference() === id ? 'active' : ''}" role="radio" aria-checked="${motionPreference() === id}" data-motion-choice="${id}">
+                  <span>${label}</span>
+                </button>`,
+              )}
+            </div>
           </div>`,
       );
     },
@@ -156,7 +167,10 @@ function mount(root, initialPanel, close) {
             ${toggle('closeOnLaunch', 'Close launcher when game starts', 'Quit Orbit Launcher as soon as Minecraft opens.')}
             ${toggle('keepLauncherOpen', 'Keep launcher open', 'Keep Orbit Launcher available while Minecraft is running. When off, it minimizes instead.')}
             ${toggle('orbitInEveryInstance', 'Orbit Client in every instance', 'Add Orbit Client and Fabric API to Fabric instances on supported Minecraft versions when they launch. Delete or disable it in an instance to keep it out of that one.')}
+            ${toggle('autoFps', 'Automatic FPS boost', 'When an instance starts, add the free mods that make Minecraft run much faster (Sodium or Embeddium, Lithium, FerriteCore, ModernFix, Entity Culling, More Culling, ImmediatelyFast, Dynamic FPS), only in versions made for that Minecraft version and loader, and run Java with memory clean-up tuned for games. Modpacks and instances that already have Sodium, OptiFine or another renderer are left as they are, and a mod you delete is never added back.')}
+            ${toggle('fastGpu', 'Use the fast graphics card', 'On laptops with two graphics cards, ask Windows to run Minecraft on the high-performance one instead of the power-saving one. Same as choosing High performance for Java in Windows graphics settings; a choice you already made there is kept.')}
             ${toggle('performanceLaunch', 'Performance launch', 'Start Minecraft at above-normal priority and with the NVIDIA driver\'s Minecraft profile, and on NVIDIA cards turn off the Sodium workaround that disables the driver\'s threading. Turn off if the game crashes or stutters on start.')}
+            ${toggle('borderlessGame', 'Borderless fullscreen', 'Play Minecraft in a borderless window that fills your screen. Alt+Tab and the Windows key switch away instantly, with no black flicker. F11 in game still switches to Minecraft’s own fullscreen.')}
             ${toggle('discordRichPresence', 'Discord Rich Presence', 'Show the instance you’re playing on your Discord profile while Discord is open.')}
             <div class="settings-row">
               <span class="grow"><b>Concurrent downloads</b><small>How many files to fetch in parallel.</small></span>
@@ -400,6 +414,11 @@ function mount(root, initialPanel, close) {
     const accent = target.closest('[data-accent]');
     if (accent) {
       applyAccent(accent.dataset.accent);
+      return draw();
+    }
+    const motion = target.closest('[data-motion-choice]');
+    if (motion) {
+      applyMotion(motion.dataset.motionChoice);
       return draw();
     }
 

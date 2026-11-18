@@ -377,7 +377,7 @@ fn extract_overrides(pack: &Path, game_dir: &Path) -> Result<()> {
     for prefix in ["overrides/", "client-overrides/"] {
         for i in 0..archive.len() {
             let mut entry = archive.by_index(i)?;
-            let name = entry.name().to_string();
+            let name = entry.name()?.to_string();
             let Some(relative) = name.strip_prefix(prefix) else {
                 continue;
             };
@@ -819,7 +819,7 @@ mod tests {
         );
 
         let archive = zip::ZipArchive::new(std::fs::File::open(&target).unwrap()).unwrap();
-        let mut names: Vec<&str> = archive.file_names().collect();
+        let mut names: Vec<String> = archive.file_names().map(|name| name.unwrap().into_owned()).collect();
         names.sort();
         assert_eq!(
             names,

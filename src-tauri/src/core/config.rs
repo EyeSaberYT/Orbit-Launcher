@@ -45,6 +45,17 @@ pub struct Settings {
     /// (see `launch::apply_performance`).
     #[serde(default = "default_true")]
     pub performance_launch: bool,
+    /// Run Minecraft as a borderless window covering the whole screen instead of exclusive fullscreen
+    /// (see `borderless`): as fast, and Alt+Tab is instant.
+    #[serde(default)]
+    pub borderless_game: bool,
+    /// FPS boost: add the well-known FPS mods to an instance when it starts (see
+    /// `commands::performance::prepare_launch`) and run Java with a garbage collector tuned for games.
+    #[serde(default = "default_true")]
+    pub auto_fps: bool,
+    /// Ask Windows to run the game on the high-performance graphics card (see `gpu`).
+    #[serde(default = "default_true")]
+    pub fast_gpu: bool,
 }
 
 fn default_true() -> bool {
@@ -86,6 +97,9 @@ impl Default for Settings {
             discord_rich_presence: true,
             orbit_in_every_instance: true,
             performance_launch: true,
+            borderless_game: false,
+            auto_fps: true,
+            fast_gpu: true,
         }
     }
 }

@@ -241,7 +241,14 @@ async fn install_resolved(
         let mut spec = DownloadSpec::new(file.url.clone(), &dest)
             .with_size(file.size)
             .with_label(file.title.clone());
-        if let Some(sha1) = &file.sha1 {
+        if !file.project_id.starts_with("cf:") {
+            // A Modrinth file comes from Modrinth's own CDN and is checked against the SHA-512 Modrinth lists for
+            // it, so a changed API answer or URL can't slip another download in.
+            check_modrinth_file(file)?;
+        }
+        if let Some(sha512) = &file.sha512 {
+            spec = spec.with_sha512(sha512.clone());
+        } else if let Some(sha1) = &file.sha1 {
             spec = spec.with_sha1(sha1.clone());
         }
         // CurseForge-hosted files need the API key on the CDN request.
@@ -435,6 +442,52 @@ pub async fn modrinth_install(
         }
     }
 
+    install_resolved(&state, &app, &instance_id, resolved, true).await
+}
+
+/// A Modrinth file must be served from `https://cdn.modrinth.com/` and come with a SHA-512.
+fn check_modrinth_file(file: &crate::api::modrinth::ResolvedFile) -> Result<()> {
+    let from_cdn = url::Url::parse(&file.url)
+        .is_ok_and(|url| url.scheme() == "https" && url.host_str() == Some("cdn.modrinth.com") && url.port().is_none());
+    if !from_cdn {
+        return Err(LauncherError::msg(format!("{} isn't served from Modrinth's CDN, so it wasn't downloaded.", file.title)));
+    }
+    if file.sha512.as_deref().map_or(true, |hash| hash.len() != 128) {
+        return Err(LauncherError::msg(format!("Modrinth gave no checksum for {}, so it wasn't downloaded.", file.title)));
+    }
+    Ok(())
+}
+
+/// Install a Modrinth mod into an instance, taking only the dependencies in `allow`. A required dependency
+/// outside the list stops the install instead of leaving the mod without it.
+pub async fn modrinth_install_limited(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+    project_id: String,
+    version_id: Option<String>,
+    allow: &[&str],
+) -> Result<Vec<InstalledProject>> {
+    let instance = state.instances.read().await.get(&instance_id)?.clone();
+    let client = client(&state).await;
+    let project = client.project(&project_id).await?;
+    if project.project_type != "mod" {
+        return Err(LauncherError::msg("Only mods are installed this way."));
+    }
+    let version = resolve_version(&client, &project_id, &project.project_type, &instance, version_id).await?;
+    let mut resolved = vec![client.primary_file(&version).await?];
+    let loader_name = instance.loader.modrinth_name().to_string();
+    let dependencies = client.resolve_dependencies(&version, &loader_name, &instance.game_version, 4).await?;
+    let already_installed: Vec<String> = instance.installed_projects.iter().map(|p| p.project_id.clone()).collect();
+    for dependency in dependencies {
+        if dependency.project_id == project_id || already_installed.contains(&dependency.project_id) {
+            continue;
+        }
+        if !allow.contains(&dependency.project_id.as_str()) {
+            return Err(LauncherError::msg(format!("{} needs {}, which isn't added automatically.", project.title, dependency.title)));
+        }
+        resolved.push(dependency);
+    }
     install_resolved(&state, &app, &instance_id, resolved, true).await
 }
 
@@ -992,5 +1045,42 @@ mod tests {
             Some(root.join("mods").join("a.jar"))
         );
         assert_eq!(tracked_file_path(root, "mod", "../a.jar"), None);
+    }
+}
+
+#[cfg(test)]
+mod download_rule_tests {
+    use super::check_modrinth_file;
+    use crate::api::modrinth::{ModrinthClient, ResolvedFile};
+
+    fn file(url: &str, sha512: Option<&str>) -> ResolvedFile {
+        ResolvedFile {
+            project_id: "AANobbMI".into(), version_id: "v".into(), title: "Sodium".into(), project_type: "mod".into(),
+            url: url.into(), filename: "sodium.jar".into(), sha1: None, sha512: sha512.map(Into::into), size: 1,
+            icon_url: None, dependency: false,
+        }
+    }
+
+    #[test]
+    fn modrinth_files_only_come_from_its_cdn_with_a_checksum() {
+        let hash = "a".repeat(128);
+        assert!(check_modrinth_file(&file("https://cdn.modrinth.com/data/AANobbMI/versions/x/sodium.jar", Some(&hash))).is_ok());
+        assert!(check_modrinth_file(&file("https://evil.example/sodium.jar", Some(&hash))).is_err());
+        assert!(check_modrinth_file(&file("http://cdn.modrinth.com/data/x.jar", Some(&hash))).is_err());
+        assert!(check_modrinth_file(&file("https://cdn.modrinth.com.evil.example/x.jar", Some(&hash))).is_err());
+        assert!(check_modrinth_file(&file("https://cdn.modrinth.com/data/x.jar", None)).is_err());
+    }
+
+    /// Real Modrinth answers pass the rule.
+    #[tokio::test]
+    #[ignore = "needs the network"]
+    async fn real_modrinth_files_pass() {
+        let http = reqwest::Client::builder().user_agent("orbit-launcher-test").build().unwrap();
+        let client = ModrinthClient::new(http, "https://api.modrinth.com/v2".to_string());
+        for id in ["AANobbMI", "gvQqBUqZ", "51shyZVL", "P7dR8mSH", "9s6osm5g"] {
+            let versions = client.versions(id, &["1.21.1".to_string()], &["fabric".to_string()]).await.unwrap();
+            let resolved = client.primary_file(&versions[0]).await.unwrap();
+            check_modrinth_file(&resolved).unwrap_or_else(|e| panic!("{id}: {e}"));
+        }
     }
 }

@@ -10,13 +10,15 @@
 //   #/project/:source/:id                project page (source: modrinth | curseforge; ?instance=)
 //   #/settings/:section?                 settings
 //   #/friends                            friends and chats (?chat=<uuid> opens one)
-import { animateSurface } from './motion.js';
+import { enterPage, leaveDuration, leavePage } from './motion.js';
 
 const routes = [];
-let current = { cleanup: null, token: 0 };
+let current = { cleanup: null, token: 0, route: null, params: null };
 
 export function route(pattern, load) {
   const names = [];
+  // Switching only the last, optional part (an instance's tab, a settings section) is a quick change.
+  const tabbed = /\/:\w+\?$/.test(pattern);
   const regex = new RegExp(
     '^' +
       pattern.replace(/\/:(\w+)(\?)?/g, (_, name, optional) => {
@@ -25,7 +27,7 @@ export function route(pattern, load) {
       }) +
       '/?$',
   );
-  routes.push({ regex, names, load });
+  routes.push({ regex, names, load, tabbed });
 }
 
 /** Navigate to a hash path such as `/instance/abc/content`. */
@@ -105,16 +107,48 @@ async function resolve() {
   listeners.forEach((fn) => fn(path));
 
   const view = document.getElementById('view');
-  const changingView = !!view.querySelector('.page:not([aria-busy])');
+  const quick = !!match && match === current.route && match.tabbed &&
+    match.names.slice(0, -1).every((name) => params[name] === current.params?.[name]);
+  current.route = match;
+  current.params = params;
   const root = document.createElement('div');
   root.className = 'page';
   root.setAttribute('aria-busy', 'true');
-  view.replaceChildren(root);
+  // The page on screen fades out where it stands while the new one fades in; one that never finished
+  // opening just goes.
+  let leaving = false;
+  // Everything in the view goes: the last page, or the startup card on first open.
+  for (const old of [...view.children]) {
+    if (old.classList.contains('is-leaving')) continue;
+    if (old.matches('.page[aria-busy]')) old.remove();
+    else {
+      leavePage(old, view, { quick });
+      leaving = true;
+    }
+  }
+  if (leaving) root.style.visibility = 'hidden';
+  view.append(root);
   view.scrollTop = 0;
+  // The new page comes in as the old one finishes fading (never on top of it), once it is ready; a page
+  // that is slow to open shows its loading state shortly after.
+  let entered = !leaving;
+  const earliest = performance.now() + leaveDuration(quick) * 0.9;
+  const enter = () => {
+    if (entered || token !== current.token) return;
+    const wait = earliest - performance.now();
+    if (wait > 0) {
+      setTimeout(enter, wait);
+      return;
+    }
+    entered = true;
+    enterPage(root, { quick });
+  };
+  if (leaving) setTimeout(enter, 450);
 
   if (!match) {
     root.removeAttribute('aria-busy');
     root.innerHTML = '<div class="empty"><h1>Page not found</h1><p><a href="#/">Go home</a></p></div>';
+    enter();
     return;
   }
 
@@ -134,13 +168,14 @@ async function resolve() {
     }
     current.cleanup = typeof cleanup === 'function' ? cleanup : null;
     root.removeAttribute('aria-busy');
-    if (changingView) void animateSurface(root, { from: .85, offset: 4 });
+    enter();
   } catch (error) {
     console.error(error);
     if (token === current.token) {
       root.removeAttribute('aria-busy');
       root.innerHTML = `<div class="empty"><h1>View unavailable</h1><p class="selectable">${String(error?.message ?? error)
         .replace(/</g, '&lt;')}</p></div>`;
+      enter();
     }
   }
 }

@@ -19,11 +19,37 @@
     <link rel="stylesheet" href="css/repair.css" />
     <link rel="stylesheet" href="css/news.css" />
     <link rel="stylesheet" href="css/motion.css" />
+    <link rel="stylesheet" href="css/festive.css" />
+    <link rel="stylesheet" href="css/splash.css" />
+    <link rel="stylesheet" href="css/updates.css" />
+    <link rel="stylesheet" href="css/advent.css" />
+    <link rel="stylesheet" href="css/onboarding.css" />
+    <link rel="stylesheet" href="css/containers.css" />
     <script type="module" src="js/main.js"></script>
   </head>
   <body>
     <!-- The supplied Minecraft landscape stays visible beneath the glass controls. -->
     <div class="sky" aria-hidden="true"></div>
+
+    <!-- The splash while the launcher starts (js/splash.js lifts it away once the Play page is ready). -->
+    <div class="splash" id="splash" role="status" aria-live="polite" data-tauri-drag-region>
+      <div class="splash-core">
+        <div class="splash-emblem" aria-hidden="true">
+          <span class="splash-glow"></span>
+          <svg class="splash-rings" viewBox="0 0 200 200">
+            <ellipse class="splash-ring is-tilted" cx="100" cy="100" rx="94" ry="36" pathLength="1" />
+            <circle class="splash-ring is-round" cx="100" cy="100" r="74" pathLength="1" />
+            <g class="splash-orbiter"><circle cx="100" cy="26" r="4.5" /></g>
+            <g class="splash-orbiter is-slow"><circle cx="100" cy="6" r="3" /></g>
+          </svg>
+          <span class="splash-logo"></span>
+        </div>
+        <div class="splash-word" aria-label="Orbit"><span>o</span><span>r</span><span>b</span><span>i</span><span>t</span></div>
+        <p class="splash-tag">Minecraft launcher</p>
+        <div class="splash-progress" aria-hidden="true"><span></span></div>
+        <p class="splash-stage" data-boot-stage>Starting Orbit…</p>
+      </div>
+    </div>
 
     <div class="app">
       <!-- The window has no OS title bar: this frosted bar moves it (data-tauri-drag-region,
@@ -43,6 +69,7 @@
           <a class="nav-tab" data-section="library" href="#/library"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg><span>Library</span></a>
           <a class="nav-tab" data-section="discover" href="#/discover"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2 6-6 2 2-6z"/></svg><span>Discover</span></a>
           <a class="nav-tab" data-section="friends" href="#/friends"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 15a5 5 0 0 1 3 5"/></svg><span>Friends</span><span class="nav-badge" id="friends-badge"></span></a>
+          <a class="nav-tab" data-section="updates" href="#/updates"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8z"/></svg><span>Updates</span><span class="nav-dot" id="updates-dot" hidden></span></a>
           <a class="nav-tab" data-section="settings" href="#/settings"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></a>
         </nav>
         <div class="topbar-fill" data-tauri-drag-region></div>
@@ -54,22 +81,6 @@
       <section class="startup-status" id="startup-status" aria-label="Launcher connection" hidden></section>
       <main class="main">
         <div class="view" id="view">
-          <div class="boot-loading" id="boot-loading" role="status" aria-live="polite">
-            <div class="boot-card glass">
-              <div class="boot-visual" aria-hidden="true">
-                <svg class="boot-orbit" viewBox="0 0 140 140">
-                  <circle class="boot-track" cx="70" cy="70" r="64" />
-                  <circle class="boot-track" cx="70" cy="70" r="50" />
-                  <path class="boot-comet" d="M70 6a64 64 0 0 1 62 48" />
-                  <path class="boot-comet is-inner" d="M70 20a50 50 0 0 1 43 75" />
-                </svg>
-                <span class="boot-logo orbit-mark" data-asset-id="orbit-smooth-star-logo" aria-hidden="true"></span>
-              </div>
-              <h1 class="boot-title">Starting Orbit</h1>
-              <p class="boot-stage" data-boot-stage>Connecting to your launcher…</p>
-              <p class="boot-hint">Getting your next adventure ready.</p>
-            </div>
-          </div>
         </div>
         <div class="progress-footer glass" id="progress-footer" hidden></div>
       </main>

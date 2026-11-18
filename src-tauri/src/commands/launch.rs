@@ -34,6 +34,10 @@ pub async fn launch_instance(
         ensure_loader(&app, &state, &id).await?;
         crate::commands::orbit::prepare_other_launch(&app, &state, &id).await;
     }
+    // FPS mods (Settings > General > Automatic FPS boost); the Orbit Client instance gets them too.
+    if !state.is_running(&id).await {
+        crate::commands::performance::prepare_launch(&app, &state, &id).await;
+    }
     let mut instance = state.instances.read().await.get(&id)?.clone();
     if let Some(quick_play) = quick_play {
         instance.settings.quick_play = quick_play;

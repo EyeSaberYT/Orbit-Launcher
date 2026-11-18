@@ -6,6 +6,31 @@ what they will notice, then what was fixed. A release without a section here doe
 
 ## v0.6.7
 
+- **Automatic FPS boost.** When you start an instance, the launcher adds the free mods that make Minecraft
+  run much faster: Sodium (or Embeddium on Forge), Lithium, FerriteCore, ModernFix, Entity Culling,
+  More Culling, ImmediatelyFast and Dynamic FPS. Only versions made for that exact Minecraft version and
+  loader are used, so it works from old versions to the newest on Fabric, Quilt, Forge and NeoForge.
+  Modpacks and instances that already have their own performance mods (Sodium, OptiFine and the like) are
+  left exactly as they are, and a mod you delete is never added back. Turn it off in Settings > General.
+- **Uses your fast graphics card.** On laptops with two graphics cards, Minecraft now runs on the
+  high-performance one instead of the power-saving one.
+- **Borderless fullscreen** for Minecraft (Settings > General): fills the screen, and Alt+Tab switches away instantly.
+- **Java tuned for games:** memory clean-up that causes fewer stutters.
+- **Security fix:** a hostile server can no longer crash the game through a bug in Java 17, 21 and 25
+  on newer Intel and AMD processors (CVE-2026-114938). Java 8 isn't affected.
+- **Safer downloads:** mods from Modrinth are only downloaded from Modrinth's own servers and must match
+  Modrinth's SHA-512 checksum. The zip and SQLite libraries are updated with their security fixes, and links
+  in the Microsoft sign-in window open in your browser.
+- **Christmas advent calendar** on the Play page: open a door each day from December 1st to 24th to
+  claim that day's limited-edition Orbit Client cosmetic (Orbit Client 1.1.8 or newer). Each door can
+  only be opened on its own day. In November it counts down to the first door.
+- **Orbit Updates:** a new tab with every Orbit announcement and the launcher and Orbit Client release
+  notes, each opening in full inside the launcher.
+- **First-time setup** for new players: pick your look, bring your instances over from Prism Launcher,
+  the Modrinth App, CurseForge or the Minecraft Launcher, and sign in.
+- **A new look:** an animated splash screen, frosted glass on every panel, smoother page changes and
+  loading animations, and snowfall with pixel-art ice spikes in December. An Animations setting turns the
+  motion off.
 - **Easier Microsoft sign-in.** Signing in now opens Microsoft's own sign-in page in a launcher window.
   It closes by itself once you're signed in, and there's no code to type in anymore. Closing the
   window (or pressing Cancel) stops the sign-in.

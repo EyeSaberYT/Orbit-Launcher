@@ -521,7 +521,7 @@ fn scan_zip(
             continue;
         };
 
-        let entry_name = format!("{prefix}{}", entry.name());
+        let entry_name = format!("{prefix}{}", entry.name().map(|name| name.into_owned()).unwrap_or_else(|_| "<unreadable name>".into()));
         if entry.is_dir() || entry_name.ends_with('/') {
             continue;
         }
