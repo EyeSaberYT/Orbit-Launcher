@@ -4,6 +4,14 @@ What changed in each Orbit Launcher release. The release build copies the sectio
 version onto the GitHub release page (and the Discord announcement), so write it for players:
 what they will notice, then what was fixed. A release without a section here does not build.
 
+## v0.6.8
+
+**Fixed: Orbit Launcher couldn't be installed on a Mac.**
+
+- macOS showed the app as "damaged" and wouldn't open it: the app is now signed, so macOS opens it.
+  The first time, it asks you to confirm in System Settings > Privacy & Security ("Open Anyway").
+- It now runs on Intel Macs too, not only Apple Silicon: there's one app for both.
+
 ## v0.6.7
 
 - **Automatic FPS boost.** When you start an instance, the launcher adds the free mods that make Minecraft

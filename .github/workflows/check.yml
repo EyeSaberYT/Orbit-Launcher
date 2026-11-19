@@ -25,3 +25,43 @@ jobs:
       - name: Test
         working-directory: src-tauri
         run: cargo test --lib
+
+  # The macOS app is built for Apple Silicon and Intel together and signed (ad hoc); one whose signature
+  # doesn't cover the whole bundle shows up on a Mac as "damaged" and can't be opened. Built without the
+  # updater files (those need the release key), so this runs on any branch.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build the macOS app
+        run: |
+          npm ci
+          npx tauri build --target universal-apple-darwin --bundles app,dmg -c '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Check its signature and architectures
+        run: |
+          app=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' | head -n 1)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -E 'Signature|Identifier|Format'
+          archs=$(lipo -archs "$app/Contents/MacOS/"*)
+          echo "Architectures: $archs"
+          echo "$archs" | grep -q x86_64 && echo "$archs" | grep -q arm64
+          ls -la src-tauri/target/universal-apple-darwin/release/bundle/dmg/

@@ -49,6 +49,9 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          # macOS builds one app for Apple Silicon and Intel Macs together (universal).
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -80,13 +83,14 @@ jobs:
           { echo 'body<<ORBIT_NOTES_END'; printf '%s\n' "$notes"; echo 'ORBIT_NOTES_END'; } >> "$GITHUB_OUTPUT"
 
       - name: Build and publish
+        id: build
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          args: ${{ matrix.platform == 'ubuntu-latest' && '--bundles deb,rpm,appimage' || '' }}
+          args: ${{ matrix.platform == 'ubuntu-latest' && '--bundles deb,rpm,appimage' || matrix.platform == 'macos-latest' && '--target universal-apple-darwin' || '' }}
           # Point the Windows updater entry at the NSIS installer (per-user, no
           # elevation), which is what the passive install mode expects.
           updaterJsonPreferNsis: true
@@ -99,8 +103,19 @@ jobs:
             **Install**
             - **Windows:** `Orbit Launcher_*_x64-setup.exe` (or the `.msi`).
             - **Linux:** `Orbit Launcher_*_amd64.AppImage` (`chmod +x` and run), or the `.deb` / `.rpm`.
-            - **macOS:** the `.dmg`.
+            - **macOS (Apple Silicon and Intel):** open `Orbit Launcher_*_universal.dmg` and drag Orbit Launcher
+              into Applications. The first time you open it, macOS says it can't check the app: open
+              System Settings > Privacy & Security, scroll down and click **Open Anyway** (only needed once).
 
             Already installed? Orbit Launcher updates itself: accept the prompt or use Settings > Updates.
           releaseDraft: false
           prerelease: false
+
+      # A macOS app whose signature doesn't cover the whole bundle is shown as "damaged" and can't be
+      # opened at all. Fail the run (and so stop the release from looking finished) if that happens.
+      - name: Check the macOS app's signature
+        if: matrix.platform == 'macos-latest'
+        run: |
+          app=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' | head -n 1)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          lipo -archs "$app/Contents/MacOS/"* | grep -q 'x86_64' && lipo -archs "$app/Contents/MacOS/"* | grep -q 'arm64'
